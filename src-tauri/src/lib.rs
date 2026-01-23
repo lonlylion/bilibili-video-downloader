@@ -10,6 +10,7 @@ mod logger;
 mod types;
 mod utils;
 mod wbi;
+#[allow(dead_code)]
 mod protobuf {
     include!("./bilibili.community.service.dm.v1.rs");
 }

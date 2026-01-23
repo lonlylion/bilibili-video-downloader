@@ -31,19 +31,19 @@ impl AnyhowErrorToStringChain for anyhow::Error {
 }
 
 pub trait AppHandleExt {
-    fn get_config(&self) -> State<RwLock<Config>>;
-    fn get_bili_client(&self) -> State<BiliClient>;
-    fn get_download_manager(&self) -> State<DownloadManager>;
+    fn get_config(&self) -> State<'_, RwLock<Config>>;
+    fn get_bili_client(&self) -> State<'_, BiliClient>;
+    fn get_download_manager(&self) -> State<'_, DownloadManager>;
 }
 
-impl AppHandleExt for tauri::AppHandle {
-    fn get_config(&self) -> State<RwLock<Config>> {
+impl AppHandleExt for AppHandle {
+    fn get_config(&self) -> State<'_, RwLock<Config>> {
         self.state::<RwLock<Config>>()
     }
-    fn get_bili_client(&self) -> State<BiliClient> {
+    fn get_bili_client(&self) -> State<'_, BiliClient> {
         self.state::<BiliClient>()
     }
-    fn get_download_manager(&self) -> State<DownloadManager> {
+    fn get_download_manager(&self) -> State<'_, DownloadManager> {
         self.state::<DownloadManager>()
     }
 }

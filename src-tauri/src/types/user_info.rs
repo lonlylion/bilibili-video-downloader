@@ -138,10 +138,6 @@ pub struct LabelInUserInfo {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(default)]
-pub struct IconResource {}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(default)]
 pub struct Wallet {
     pub mid: i64,
     pub bcoin_balance: f64,
