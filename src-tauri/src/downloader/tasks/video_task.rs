@@ -234,44 +234,31 @@ impl VideoTask {
         Ok(())
     }
 
-    fn prepare(&mut self, app: &AppHandle, mut medias: Vec<MediaForPrepare>) -> anyhow::Result<()> {
+    fn prepare(&mut self, app: &AppHandle, medias: Vec<MediaForPrepare>) -> anyhow::Result<()> {
         if medias.is_empty() {
             return Err(anyhow!("获取视频地址失败"));
         }
 
-        let (video_quality_priority, codec_type_priority) = {
-            let config = app.get_config().inner().read();
-            (
-                config.video_quality_priority.clone(),
-                config.codec_type_priority.clone(),
-            )
+        let video_quality_is_unknown = self.video_quality == VideoQuality::Unknown;
+        let codec_type_is_unknown = self.codec_type == CodecType::Unknown;
+
+        let media = if video_quality_is_unknown && codec_type_is_unknown {
+            get_media_by_priority(app, medias)
+        } else if !video_quality_is_unknown && !codec_type_is_unknown {
+            medias
+                .iter()
+                .find(|m| {
+                    let quality: VideoQuality = m.id.into();
+                    let codec_type: CodecType = m.codecid.into();
+                    quality == self.video_quality && codec_type == self.codec_type
+                })
+                .cloned()
+                .unwrap_or_else(|| get_media_by_priority(app, medias))
+        } else {
+            return Err(anyhow!(
+                "`video_quality`和`codec_type`必须同时为`Unknown`或同时不为`Unknown`"
+            ));
         };
-
-        let video_priority_map: HashMap<&VideoQuality, usize> = video_quality_priority
-            .iter()
-            .enumerate()
-            .map(|(index, quality)| (quality, index))
-            .collect();
-        medias.sort_by_key(|media| {
-            let quality: VideoQuality = media.id.into();
-            video_priority_map.get(&quality).unwrap_or(&usize::MAX)
-        });
-
-        let retain_id = medias[0].id;
-        medias.retain(|m| m.id == retain_id);
-
-        let codec_priority_map: HashMap<&CodecType, usize> = codec_type_priority
-            .iter()
-            .enumerate()
-            .map(|(index, codec_type)| (codec_type, index))
-            .collect();
-
-        medias.sort_by_key(|m| {
-            let codec_type: CodecType = m.codecid.into();
-            codec_priority_map.get(&codec_type).unwrap_or(&usize::MAX)
-        });
-
-        let media = &medias[0];
 
         self.video_quality = media.id.into();
         self.codec_type = media.codecid.into();
@@ -447,8 +434,45 @@ impl VideoTask {
     }
 }
 
+#[derive(Clone)]
 struct MediaForPrepare {
     pub id: i64,
     pub url_with_content_length: Vec<(String, u64)>,
     pub codecid: i64,
+}
+
+fn get_media_by_priority(app: &AppHandle, mut medias: Vec<MediaForPrepare>) -> MediaForPrepare {
+    let (video_quality_priority, codec_type_priority) = {
+        let config = app.get_config().inner().read();
+        (
+            config.video_quality_priority.clone(),
+            config.codec_type_priority.clone(),
+        )
+    };
+
+    let video_priority_map: HashMap<&VideoQuality, usize> = video_quality_priority
+        .iter()
+        .enumerate()
+        .map(|(index, quality)| (quality, index))
+        .collect();
+    medias.sort_by_key(|media| {
+        let quality: VideoQuality = media.id.into();
+        video_priority_map.get(&quality).unwrap_or(&usize::MAX)
+    });
+
+    let retain_id = medias[0].id;
+    medias.retain(|m| m.id == retain_id);
+
+    let codec_priority_map: HashMap<&CodecType, usize> = codec_type_priority
+        .iter()
+        .enumerate()
+        .map(|(index, codec_type)| (codec_type, index))
+        .collect();
+
+    medias.sort_by_key(|m| {
+        let codec_type: CodecType = m.codecid.into();
+        codec_priority_map.get(&codec_type).unwrap_or(&usize::MAX)
+    });
+
+    medias[0].clone()
 }

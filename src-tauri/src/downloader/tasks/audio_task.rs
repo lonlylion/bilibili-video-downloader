@@ -234,24 +234,24 @@ impl AudioTask {
         Ok(())
     }
 
-    fn prepare(&mut self, app: &AppHandle, mut medias: Vec<MediaForPrepare>) {
+    fn prepare(&mut self, app: &AppHandle, medias: Vec<MediaForPrepare>) {
         if medias.is_empty() {
             self.completed = true;
             return;
         }
 
-        let quality_priority = app.get_config().read().audio_quality_priority.clone();
-        let priority_map: HashMap<&AudioQuality, usize> = quality_priority
-            .iter()
-            .enumerate()
-            .map(|(index, quality)| (quality, index))
-            .collect();
-        medias.sort_by_key(|media| {
-            let quality: AudioQuality = media.id.into();
-            priority_map.get(&quality).unwrap_or(&usize::MAX)
-        });
-
-        let media = &medias[0];
+        let media = if self.audio_quality == AudioQuality::Unknown {
+            get_media_by_priority(app, medias)
+        } else {
+            medias
+                .iter()
+                .find(|m| {
+                    let quality: AudioQuality = m.id.into();
+                    quality == self.audio_quality
+                })
+                .cloned()
+                .unwrap_or_else(|| get_media_by_priority(app, medias))
+        };
 
         self.audio_quality = media.id.into();
 
@@ -424,4 +424,19 @@ impl AudioTask {
 struct MediaForPrepare {
     pub id: i64,
     pub url_with_content_length: Vec<(String, u64)>,
+}
+
+fn get_media_by_priority(app: &AppHandle, mut medias: Vec<MediaForPrepare>) -> MediaForPrepare {
+    let quality_priority = app.get_config().read().audio_quality_priority.clone();
+    let priority_map: HashMap<&AudioQuality, usize> = quality_priority
+        .iter()
+        .enumerate()
+        .map(|(index, quality)| (quality, index))
+        .collect();
+    medias.sort_by_key(|media| {
+        let quality: AudioQuality = media.id.into();
+        priority_map.get(&quality).unwrap_or(&usize::MAX)
+    });
+
+    medias[0].clone()
 }
