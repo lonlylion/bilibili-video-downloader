@@ -91,7 +91,11 @@ impl VideoTask {
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
 
-        while let Some(Ok(media)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(media) = join_result else {
+                continue;
+            };
+
             if !media.url_with_content_length.is_empty() {
                 medias.push(media);
             }
@@ -157,7 +161,11 @@ impl VideoTask {
             }
         }
 
-        while let Some(Ok(media)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(media) = join_result else {
+                continue;
+            };
+
             if !media.url_with_content_length.is_empty() {
                 medias.push(media);
             }
@@ -223,7 +231,11 @@ impl VideoTask {
             }
         }
 
-        while let Some(Ok(media)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(media) = join_result else {
+                continue;
+            };
+
             if !media.url_with_content_length.is_empty() {
                 medias.push(media);
             }
@@ -384,7 +396,11 @@ impl VideoTask {
             });
         }
 
-        while let Some(Ok(download_video_result)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(download_video_result) = join_result else {
+                continue;
+            };
+
             match download_video_result {
                 Ok(i) => download_task.update_progress(|p| p.video_task.chunks[i].completed = true),
                 Err(err) => {

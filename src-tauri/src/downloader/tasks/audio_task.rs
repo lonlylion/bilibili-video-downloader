@@ -111,7 +111,11 @@ impl AudioTask {
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
 
-        while let Some(Ok(media)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(media) = join_result else {
+                continue;
+            };
+
             if !media.url_with_content_length.is_empty() {
                 medias.push(media);
             }
@@ -167,7 +171,11 @@ impl AudioTask {
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
 
-        while let Some(Ok(media)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(media) = join_result else {
+                continue;
+            };
+
             if !media.url_with_content_length.is_empty() {
                 medias.push(media);
             }
@@ -223,7 +231,11 @@ impl AudioTask {
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
 
-        while let Some(Ok(media)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(media) = join_result else {
+                continue;
+            };
+
             if !media.url_with_content_length.is_empty() {
                 medias.push(media);
             }
@@ -371,8 +383,12 @@ impl AudioTask {
             });
         }
 
-        while let Some(Ok(download_video_result)) = join_set.join_next().await {
-            match download_video_result {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(download_audio_result) = join_result else {
+                continue;
+            };
+
+            match download_audio_result {
                 Ok(i) => download_task.update_progress(|p| p.audio_task.chunks[i].completed = true),
                 Err(err) => {
                     let err_title = format!("{ids_string} `{episode_title}`音频的一个分片下载失败");
@@ -402,7 +418,7 @@ impl AudioTask {
         ))?;
 
         if !is_audio_file_complete {
-            download_task.update_progress(|p| p.video_task.mark_uncompleted());
+            download_task.update_progress(|p| p.audio_task.mark_uncompleted());
             return Err(anyhow!(
                 "音频文件`{}`不完整，[继续]会重新下载所有分片",
                 temp_file_path.display()

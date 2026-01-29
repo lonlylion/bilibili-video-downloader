@@ -818,7 +818,11 @@ impl BiliClient {
             });
         }
 
-        while let Some(Ok(Some((url, content_length)))) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(Some((url, content_length))) = join_result else {
+                continue;
+            };
+
             url_with_content_length.push((url, content_length));
         }
 
@@ -868,7 +872,11 @@ impl BiliClient {
         }
 
         let mut replies = Vec::new();
-        while let Some(Ok(res)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(res) = join_result else {
+                continue;
+            };
+
             let reply = res?;
             replies.push(reply);
         }
