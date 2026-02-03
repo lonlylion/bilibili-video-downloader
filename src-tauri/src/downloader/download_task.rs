@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use parking_lot::RwLock;
@@ -233,28 +230,9 @@ impl DownloadTask {
             return;
         }
 
-        tracing::debug!("{ids_string} 开始准备`{episode_title}`的下载");
-        let _ = DownloadEvent::ProgressPreparing {
-            task_id: self.task_id.clone(),
-        }
-        .emit(&self.app);
-
-        if let Err(err) = progress.prepare(&self.app).await {
-            let err_title = format!("{ids_string} `{episode_title}`准备下载失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
-
-            self.set_state(DownloadTaskState::Failed);
-
-            return;
-        }
-
-        progress.completed_ts = None; // 重置完成时间戳
-        self.update_progress(|p| *p = progress.clone());
-
         tracing::debug!("{ids_string} 开始下载`{episode_title}`");
-        if let Err(err) = self
-            .handle_progress(progress)
+        if let Err(err) = progress
+            .process(self)
             .await
             .context("[继续]失败的任务可以断点续传")
         {
@@ -271,102 +249,6 @@ impl DownloadTask {
 
         self.set_state(DownloadTaskState::Completed);
         tracing::info!("{ids_string} `{episode_title}`下载完成");
-    }
-
-    async fn handle_progress(self: &Arc<Self>, progress: DownloadProgress) -> anyhow::Result<()> {
-        let ids_string = progress.get_ids_string();
-        let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
-
-        std::fs::create_dir_all(episode_dir).context(format!(
-            "{ids_string} 创建目录`{}`失败",
-            episode_dir.display()
-        ))?;
-
-        let video_task = &progress.video_task;
-        let audio_task = &progress.audio_task;
-        let video_process_task = &progress.video_process_task;
-        let danmaku_task = &progress.danmaku_task;
-        let subtitle_task = &progress.subtitle_task;
-        let cover_task = &progress.cover_task;
-        let nfo_task = &progress.nfo_task;
-        let json_task = &progress.json_task;
-
-        let mut player_info = None;
-        let mut episode_info = None;
-
-        if !video_task.is_completed() && video_task.content_length != 0 {
-            video_task
-                .process(self, &progress)
-                .await
-                .context(format!("{ids_string} `{filename}`下载视频文件失败"))?;
-            tracing::debug!("{ids_string} `{filename}`视频下载任务完成");
-        }
-
-        if !audio_task.is_completed() && audio_task.content_length != 0 {
-            audio_task
-                .process(self, &progress)
-                .await
-                .context(format!("{ids_string} `{filename}`下载音频文件失败"))?;
-            tracing::debug!("{ids_string} `{filename}`音频下载任务完成");
-        }
-
-        if !video_process_task.is_completed() {
-            video_process_task
-                .process(self, &progress, &mut player_info)
-                .await
-                .context(format!("{ids_string} `{filename}`视频处理失败"))?;
-            tracing::debug!("{ids_string} `{filename}`视频处理任务完成");
-        }
-
-        if !danmaku_task.is_completed() {
-            danmaku_task
-                .process(self, &progress)
-                .await
-                .context(format!("{ids_string} `{filename}`下载弹幕失败"))?;
-            tracing::debug!("{ids_string} `{filename}`弹幕下载任务完成");
-        }
-
-        if !subtitle_task.is_completed() {
-            subtitle_task
-                .process(self, &progress, &mut player_info)
-                .await
-                .context(format!("{ids_string} `{filename}`下载字幕失败"))?;
-            tracing::debug!("{ids_string} `{filename}`字幕下载任务完成");
-        }
-
-        if !cover_task.is_completed() {
-            cover_task
-                .process(self, &progress)
-                .await
-                .context(format!("{ids_string} `{filename}`下载封面失败"))?;
-            tracing::debug!("{ids_string} `{filename}`封面下载任务完成");
-        }
-
-        if !nfo_task.is_completed() {
-            nfo_task
-                .process(self, &progress, &mut episode_info)
-                .await
-                .context(format!("{ids_string} `{filename}`下载NFO失败"))?;
-            tracing::debug!("{ids_string} `{filename}`NFO下载任务完成");
-        }
-
-        if !json_task.is_completed() {
-            json_task
-                .process(self, &progress, &mut episode_info)
-                .await
-                .context(format!("{ids_string} `{filename}`下载JSON元数据失败"))?;
-            tracing::debug!("{ids_string} `{filename}`JSON元数据下载任务完成");
-        }
-
-        let completed_ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .ok();
-        if completed_ts.is_some() {
-            self.update_progress(|p| p.completed_ts = completed_ts);
-        }
-
-        Ok(())
     }
 
     async fn sleep_between_task(&self) {

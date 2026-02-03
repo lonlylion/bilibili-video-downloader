@@ -1,5 +1,6 @@
 use std::{
     path::PathBuf,
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -7,15 +8,20 @@ use anyhow::{anyhow, Context};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager};
+use tauri_specta::Event;
 use uuid::Uuid;
 
 use crate::{
     config::Config,
-    downloader::tasks::{
-        audio_task::AudioTask, cover_task::CoverTask, danmaku_task::DanmakuTask,
-        json_task::JsonTask, nfo_task::NfoTask, subtitle_task::SubtitleTask,
-        video_process_task::VideoProcessTask, video_task::VideoTask,
+    downloader::{
+        download_task::DownloadTask,
+        tasks::{
+            audio_task::AudioTask, cover_task::CoverTask, danmaku_task::DanmakuTask,
+            json_task::JsonTask, nfo_task::NfoTask, subtitle_task::SubtitleTask,
+            video_process_task::VideoProcessTask, video_task::VideoTask,
+        },
     },
+    events::DownloadEvent,
     extensions::AppHandleExt,
     types::{
         audio_quality::AudioQuality,
@@ -184,7 +190,116 @@ impl DownloadProgress {
         Ok(progress)
     }
 
-    pub async fn prepare(&mut self, app: &AppHandle) -> anyhow::Result<()> {
+    pub async fn process(&mut self, download_task: &Arc<DownloadTask>) -> anyhow::Result<()> {
+        let ids_string = self.get_ids_string();
+
+        let _ = DownloadEvent::ProgressPreparing {
+            task_id: self.task_id.clone(),
+        }
+        .emit(&download_task.app);
+
+        self.prepare(&download_task.app)
+            .await
+            .context("准备下载失败")?;
+
+        self.completed_ts = None; // 重置完成时间戳
+        download_task.update_progress(|p| *p = self.clone());
+
+        let (episode_dir, filename) = (&self.episode_dir, &self.filename);
+
+        std::fs::create_dir_all(episode_dir).context(format!(
+            "{ids_string} 创建目录`{}`失败",
+            episode_dir.display()
+        ))?;
+
+        let video_task = &self.video_task;
+        let audio_task = &self.audio_task;
+        let video_process_task = &self.video_process_task;
+        let danmaku_task = &self.danmaku_task;
+        let subtitle_task = &self.subtitle_task;
+        let cover_task = &self.cover_task;
+        let nfo_task = &self.nfo_task;
+        let json_task = &self.json_task;
+
+        let mut player_info = None;
+        let mut episode_info = None;
+
+        if !video_task.is_completed() && video_task.content_length != 0 {
+            video_task
+                .process(download_task, self)
+                .await
+                .context(format!("{ids_string} `{filename}`下载视频文件失败"))?;
+            tracing::debug!("{ids_string} `{filename}`视频下载任务完成");
+        }
+
+        if !audio_task.is_completed() && audio_task.content_length != 0 {
+            audio_task
+                .process(download_task, self)
+                .await
+                .context(format!("{ids_string} `{filename}`下载音频文件失败"))?;
+            tracing::debug!("{ids_string} `{filename}`音频下载任务完成");
+        }
+
+        if !video_process_task.is_completed() {
+            video_process_task
+                .process(download_task, self, &mut player_info)
+                .await
+                .context(format!("{ids_string} `{filename}`视频处理失败"))?;
+            tracing::debug!("{ids_string} `{filename}`视频处理任务完成");
+        }
+
+        if !danmaku_task.is_completed() {
+            danmaku_task
+                .process(download_task, self)
+                .await
+                .context(format!("{ids_string} `{filename}`下载弹幕失败"))?;
+            tracing::debug!("{ids_string} `{filename}`弹幕下载任务完成");
+        }
+
+        if !subtitle_task.is_completed() {
+            subtitle_task
+                .process(download_task, self, &mut player_info)
+                .await
+                .context(format!("{ids_string} `{filename}`下载字幕失败"))?;
+            tracing::debug!("{ids_string} `{filename}`字幕下载任务完成");
+        }
+
+        if !cover_task.is_completed() {
+            cover_task
+                .process(download_task, self)
+                .await
+                .context(format!("{ids_string} `{filename}`下载封面失败"))?;
+            tracing::debug!("{ids_string} `{filename}`封面下载任务完成");
+        }
+
+        if !nfo_task.is_completed() {
+            nfo_task
+                .process(download_task, self, &mut episode_info)
+                .await
+                .context(format!("{ids_string} `{filename}`下载NFO失败"))?;
+            tracing::debug!("{ids_string} `{filename}`NFO下载任务完成");
+        }
+
+        if !json_task.is_completed() {
+            json_task
+                .process(download_task, self, &mut episode_info)
+                .await
+                .context(format!("{ids_string} `{filename}`下载JSON元数据失败"))?;
+            tracing::debug!("{ids_string} `{filename}`JSON元数据下载任务完成");
+        }
+
+        let completed_ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .ok();
+        if completed_ts.is_some() {
+            download_task.update_progress(|p| p.completed_ts = completed_ts);
+        }
+
+        Ok(())
+    }
+
+    async fn prepare(&mut self, app: &AppHandle) -> anyhow::Result<()> {
         let video_selected = self.video_task.selected;
         let video_completed = self.video_task.completed;
         let audio_selected = self.audio_task.selected;
