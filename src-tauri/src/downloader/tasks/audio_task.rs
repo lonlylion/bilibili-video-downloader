@@ -371,7 +371,7 @@ impl AudioTask {
                 download_task: download_task.clone(),
                 start,
                 end,
-                url: audio_task.url.to_string(),
+                url: audio_task.url.clone(),
                 file: file.clone(),
                 chunk_index,
             };

@@ -382,7 +382,7 @@ impl VideoTask {
                 download_task: download_task.clone(),
                 start,
                 end,
-                url: video_task.url.to_string(),
+                url: video_task.url.clone(),
                 file: file.clone(),
                 chunk_index: i,
             };

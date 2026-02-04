@@ -81,7 +81,7 @@ impl DanmakuTask {
             let config = download_task.app.get_config().read().danmaku_config.clone();
             let ass_file = File::create(&ass_path)
                 .context(format!("创建弹幕ASS文件`{}`失败", ass_path.display()))?;
-            let title = filename.to_string();
+            let title = filename.clone();
             xml_to_ass(&xml, ass_file, title, config).context("将弹幕XML转换为ASS失败")?;
         }
 
