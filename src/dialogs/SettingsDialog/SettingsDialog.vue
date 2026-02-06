@@ -5,9 +5,8 @@ import { path } from '@tauri-apps/api'
 import { appDataDir } from '@tauri-apps/api/path'
 import { useStore } from '../../store.ts'
 import DownloadSettings from './components/DownloadSettings.vue'
-import ProxySettings from './components/ProxySettings.vue'
 import FmtSettings from './components/FmtSettings.vue'
-import DownloadSpeedSettings from './components/DownloadSpeedSettings.vue'
+import NetworkSettings from './components/NetworkSettings.vue'
 import AssDanmakuSettings from './components/AssDanmakuSettings.vue'
 import { useMessage } from 'naive-ui'
 
@@ -64,11 +63,8 @@ async function showConfigInFileManager() {
           <n-tab-pane name="ass_danmaku_settings" tab="ass弹幕">
             <AssDanmakuSettings />
           </n-tab-pane>
-          <n-tab-pane name="download_speed_settings" tab="下载速度">
-            <DownloadSpeedSettings />
-          </n-tab-pane>
-          <n-tab-pane name="proxy_settings" tab="代理">
-            <ProxySettings />
+          <n-tab-pane name="network_settings" tab="网络">
+            <NetworkSettings />
           </n-tab-pane>
         </n-tabs>
 
