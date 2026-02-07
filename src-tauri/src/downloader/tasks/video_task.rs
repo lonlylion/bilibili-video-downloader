@@ -248,29 +248,29 @@ impl VideoTask {
 
     fn prepare(&mut self, app: &AppHandle, medias: Vec<MediaForPrepare>) -> anyhow::Result<()> {
         if medias.is_empty() {
-            return Err(anyhow!("获取视频地址失败"));
+            return Err(anyhow!("获取视频地址失败，medias为空"));
         }
 
         let video_quality_is_unknown = self.video_quality == VideoQuality::Unknown;
         let codec_type_is_unknown = self.codec_type == CodecType::Unknown;
 
-        let media = if video_quality_is_unknown && codec_type_is_unknown {
-            get_media_by_priority(app, medias)
-        } else if !video_quality_is_unknown && !codec_type_is_unknown {
-            medias
-                .iter()
-                .find(|m| {
-                    let quality: VideoQuality = m.id.into();
-                    let codec_type: CodecType = m.codecid.into();
-                    quality == self.video_quality && codec_type == self.codec_type
-                })
-                .cloned()
-                .unwrap_or_else(|| get_media_by_priority(app, medias))
-        } else {
+        if video_quality_is_unknown != codec_type_is_unknown {
             return Err(anyhow!(
                 "`video_quality`和`codec_type`必须同时为`Unknown`或同时不为`Unknown`"
             ));
+        }
+
+        // 如果`video_quality`和`codec_type`同时为`Unknown`，则更倾向于使用优先级选择
+        let prefer_select_by_priority = video_quality_is_unknown;
+
+        let selected_media = if prefer_select_by_priority {
+            select_media_by_priority(app, &medias)
+        } else {
+            select_exact_match_media(self, &medias)
+                .or_else(|| select_media_by_priority(app, &medias))
         };
+
+        let media = selected_media.context("获取视频地址失败，medias为空")?;
 
         self.video_quality = media.id.into();
         self.codec_type = media.codecid.into();
@@ -462,7 +462,23 @@ struct MediaForPrepare {
     pub codecid: i64,
 }
 
-fn get_media_by_priority(app: &AppHandle, mut medias: Vec<MediaForPrepare>) -> MediaForPrepare {
+fn select_exact_match_media(
+    video_task: &VideoTask,
+    medias: &[MediaForPrepare],
+) -> Option<MediaForPrepare> {
+    let media = medias.iter().find(|media| {
+        let quality: VideoQuality = media.id.into();
+        let codec_type: CodecType = media.codecid.into();
+        quality == video_task.video_quality && codec_type == video_task.codec_type
+    });
+
+    media.cloned()
+}
+
+fn select_media_by_priority(
+    app: &AppHandle,
+    medias: &[MediaForPrepare],
+) -> Option<MediaForPrepare> {
     let (video_quality_priority, codec_type_priority) = {
         let config = app.get_config().inner().read();
         (
@@ -471,29 +487,29 @@ fn get_media_by_priority(app: &AppHandle, mut medias: Vec<MediaForPrepare>) -> M
         )
     };
 
+    // 构建索引表，这是为了在排序时能以 O(1) 查找到优先级，索引越小优先级越高
     let video_priority_map: HashMap<&VideoQuality, usize> = video_quality_priority
         .iter()
         .enumerate()
         .map(|(index, quality)| (quality, index))
         .collect();
-    medias.sort_by_key(|media| {
-        let quality: VideoQuality = media.id.into();
-        video_priority_map.get(&quality).unwrap_or(&usize::MAX)
-    });
-
-    let retain_id = medias[0].id;
-    medias.retain(|m| m.id == retain_id);
-
     let codec_priority_map: HashMap<&CodecType, usize> = codec_type_priority
         .iter()
         .enumerate()
         .map(|(index, codec_type)| (codec_type, index))
         .collect();
 
-    medias.sort_by_key(|m| {
-        let codec_type: CodecType = m.codecid.into();
-        codec_priority_map.get(&codec_type).unwrap_or(&usize::MAX)
+    let media = medias.iter().min_by_key(|media| {
+        let quality: VideoQuality = media.id.into();
+        let quality_index = video_priority_map.get(&quality).unwrap_or(&usize::MAX);
+
+        let codec_type: CodecType = media.codecid.into();
+        let codec_index = codec_priority_map.get(&codec_type).unwrap_or(&usize::MAX);
+        // Rust 的元组比较机制是从左到右依次比较
+        // 先比较quality_index(主排序键)
+        // 如果quality_index相同，则比较codec_index(次排序键)
+        (quality_index, codec_index)
     });
 
-    medias[0].clone()
+    media.cloned()
 }

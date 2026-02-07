@@ -252,17 +252,19 @@ impl AudioTask {
             return;
         }
 
-        let media = if self.audio_quality == AudioQuality::Unknown {
-            get_media_by_priority(app, medias)
+        // 如果`audio_quality`为`Unknown`，则更倾向于使用优先级选择
+        let prefer_select_by_priority = self.audio_quality == AudioQuality::Unknown;
+
+        let selected_media = if prefer_select_by_priority {
+            select_media_by_priority(app, &medias)
         } else {
-            medias
-                .iter()
-                .find(|m| {
-                    let quality: AudioQuality = m.id.into();
-                    quality == self.audio_quality
-                })
-                .cloned()
-                .unwrap_or_else(|| get_media_by_priority(app, medias))
+            select_exact_match_media(self, &medias)
+                .or_else(|| select_media_by_priority(app, &medias))
+        };
+
+        let Some(media) = selected_media else {
+            self.completed = true;
+            return;
         };
 
         self.audio_quality = media.id.into();
@@ -448,17 +450,34 @@ struct MediaForPrepare {
     pub url_with_content_length: Vec<(String, u64)>,
 }
 
-fn get_media_by_priority(app: &AppHandle, mut medias: Vec<MediaForPrepare>) -> MediaForPrepare {
+fn select_exact_match_media(
+    audio_task: &AudioTask,
+    medias: &[MediaForPrepare],
+) -> Option<MediaForPrepare> {
+    let media = medias.iter().find(|m| {
+        let quality: AudioQuality = m.id.into();
+        quality == audio_task.audio_quality
+    });
+
+    media.cloned()
+}
+
+fn select_media_by_priority(
+    app: &AppHandle,
+    medias: &[MediaForPrepare],
+) -> Option<MediaForPrepare> {
     let quality_priority = app.get_config().read().audio_quality_priority.clone();
+
     let priority_map: HashMap<&AudioQuality, usize> = quality_priority
         .iter()
         .enumerate()
         .map(|(index, quality)| (quality, index))
         .collect();
-    medias.sort_by_key(|media| {
+
+    let media = medias.iter().min_by_key(|media| {
         let quality: AudioQuality = media.id.into();
         priority_map.get(&quality).unwrap_or(&usize::MAX)
     });
 
-    medias[0].clone()
+    media.cloned()
 }
