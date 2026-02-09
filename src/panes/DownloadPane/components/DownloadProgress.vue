@@ -1,6 +1,6 @@
 <script setup lang="tsx">
 import { path } from '@tauri-apps/api'
-import { commands, DownloadTaskState } from '../../../bindings.ts'
+import { commands } from '../../../bindings.ts'
 import { useStore } from '../../../store.ts'
 import {
   PhWarningCircle,
@@ -55,7 +55,9 @@ async function handleProgressDoubleClick() {
   }
 }
 
-function stateToStatus(state: DownloadTaskState): ProgressProps['status'] {
+const progressStatus = computed<ProgressProps['status']>(() => {
+  const state = props.p.state
+
   if (state === 'Completed') {
     return 'success'
   } else if (state === 'Paused') {
@@ -65,9 +67,11 @@ function stateToStatus(state: DownloadTaskState): ProgressProps['status'] {
   } else {
     return 'default'
   }
-}
+})
 
-function stateToColorClass(state: DownloadTaskState) {
+const colorClass = computed<string>(() => {
+  const state = props.p.state
+
   if (state === 'Downloading') {
     return 'text-blue-500'
   } else if (state === 'Pending') {
@@ -81,7 +85,7 @@ function stateToColorClass(state: DownloadTaskState) {
   }
 
   return ''
-}
+})
 
 async function showMp4InFileManager(episodeDir: string, filename: string) {
   if (store.config === undefined) {
@@ -145,7 +149,8 @@ function handleModifyClick() {
 
 <template>
   <div
-    class="p-2 mb-2 rounded-lg flex flex-col border border-solid border-gray-2"
+    class="selectable p-2 mb-2 rounded-lg flex flex-col border border-solid border-gray-2"
+    :class="selectedIds.has(p.task_id) ? 'selected shadow-md' : 'hover:bg-gray-1'"
     @contextmenu="handleProgressContextMenu"
     @dblclick="handleProgressDoubleClick">
     <div class="flex">
@@ -254,7 +259,7 @@ function handleModifyClick() {
         :up-avatar="p.up_avatar"
         :up-uid="p.up_uid" />
 
-      <div v-if="p.state !== 'Completed'" :class="[stateToColorClass(p.state), 'flex items-center w-100']">
+      <div v-if="p.state !== 'Completed'" :class="[colorClass, 'flex items-center w-100']">
         <n-icon :size="22">
           <PhCloudArrowDown v-if="p.state === 'Downloading'" />
           <PhClock v-else-if="p.state === 'Pending'" />
@@ -264,7 +269,7 @@ function handleModifyClick() {
         <span class="whitespace-nowrap mr-2">{{ p.stateIndicator }}</span>
         <n-progress
           v-if="p.taskIndicator !== ''"
-          :status="stateToStatus(p.state)"
+          :status="progressStatus"
           :percentage="p.percentage"
           :processing="p.state === 'Downloading'">
           {{ p.taskIndicator }}

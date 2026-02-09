@@ -47,6 +47,9 @@ importers:
       vue-draggable-plus:
         specifier: ^0.6.0
         version: 0.6.0(@types/sortablejs@1.15.8)
+      z-vue-scan:
+        specifier: ^0.0.35
+        version: 0.0.35(vue@3.5.17(typescript@5.6.3))
     devDependencies:
       '@eslint/js':
         specifier: ^9.30.1
@@ -1969,6 +1972,17 @@ packages:
   vscode-uri@3.1.0:
     resolution: {integrity: sha512-/BpdSx+yCQGnCvecbyXdxHDkuk55/G3xwnC0GqY4gmQ3j+A+g8kzzgB4Nk/SINjqn6+waqw3EgbVF2QKExkRxQ==}
 
+  vue-demi@0.14.10:
+    resolution: {integrity: sha512-nMZBOwuzabUO0nLgIcc6rycZEebF6eeUfaiQx9+WSk8e29IbLvPU9feI6tqW4kTo3hvoYAJkMh8n8D0fuISphg==}
+    engines: {node: '>=12'}
+    hasBin: true
+    peerDependencies:
+      '@vue/composition-api': ^1.0.0-rc.1
+      vue: ^3.0.0-0 || ^2.6.0
+    peerDependenciesMeta:
+      '@vue/composition-api':
+        optional: true
+
   vue-draggable-plus@0.6.0:
     resolution: {integrity: sha512-G5TSfHrt9tX9EjdG49InoFJbt2NYk0h3kgjgKxkFWr3ulIUays0oFObr5KZ8qzD4+QnhtALiRwIqY6qul4egqw==}
     peerDependencies:
@@ -2034,6 +2048,15 @@ packages:
   yoctocolors@2.1.1:
     resolution: {integrity: sha512-GQHQqAopRhwU8Kt1DDM8NjibDXHC8eoh1erhGAJPEyveY9qqVeXvVikNKrDz69sHowPMorbPUrH/mx8c50eiBQ==}
     engines: {node: '>=18'}
+
+  z-vue-scan@0.0.35:
+    resolution: {integrity: sha512-isWALsDyRFhvGJrWCKbZ8ORYXmrWp+ewvoaBxBQe0WWvilzyuoTLW8IG5gL2kORLdTWmyj2j1NvehaJpKavJcw==}
+    peerDependencies:
+      '@vue/composition-api': ^1.0.0-rc.1
+      vue: ^2.0.0 || >=3.0.0
+    peerDependenciesMeta:
+      '@vue/composition-api':
+        optional: true
 
 snapshots:
 
@@ -3983,6 +4006,10 @@ snapshots:
 
   vscode-uri@3.1.0: {}
 
+  vue-demi@0.14.10(vue@3.5.17(typescript@5.6.3)):
+    dependencies:
+      vue: 3.5.17(typescript@5.6.3)
+
   vue-draggable-plus@0.6.0(@types/sortablejs@1.15.8):
     dependencies:
       '@types/sortablejs': 1.15.8
@@ -4045,3 +4072,8 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   yoctocolors@2.1.1: {}
+
+  z-vue-scan@0.0.35(vue@3.5.17(typescript@5.6.3)):
+    dependencies:
+      vue: 3.5.17(typescript@5.6.3)
+      vue-demi: 0.14.10(vue@3.5.17(typescript@5.6.3))
