@@ -1,6 +1,7 @@
 <script setup lang="tsx">
 import { ref } from 'vue'
 import { useStore } from '../../../store.ts'
+import { NPopover } from 'naive-ui'
 
 const store = useStore()
 
@@ -65,7 +66,20 @@ function AvailableFmtFields() {
       </div>
       <div>
         <span class="rounded bg-gray-500 px-1 select-all">episode_order</span>
-        <span class="ml-2">在合集里的序号(从1起)</span>
+        <span class="ml-2">在合集里的序号(从1起)，</span>
+        <NPopover placement="top" trigger="hover">
+          {{
+            trigger: () => <span class="text-blue">支持补齐</span>,
+            default: () => (
+              <div class="text-xs">
+                <span>示例：</span>
+                <span class="rounded bg-gray-300 px-1 select-all font-mono">{'{episode_order:0>4}'}</span>
+                <span>表示用0补齐4位，</span>
+                <span class="mr-2">例如 13 &rarr; 0013</span>
+              </div>
+            ),
+          }}
+        </NPopover>
       </div>
       <div>
         <span class="rounded bg-gray-500 px-1 select-all">part_title</span>
@@ -73,8 +87,22 @@ function AvailableFmtFields() {
       </div>
       <div>
         <span class="rounded bg-gray-500 px-1 select-all">part_order</span>
-        <span class="ml-2">分P序号</span>
+        <span class="ml-2">分P序号，</span>
+        <NPopover placement="top" trigger="hover">
+          {{
+            trigger: () => <span class="text-blue">支持补齐</span>,
+            default: () => (
+              <div class="text-xs">
+                <span>示例：</span>
+                <span class="rounded bg-gray-300 px-1 select-all font-mono">{'{part_order:0>4}'}</span>
+                <span>表示用0补齐4位，</span>
+                <span class="mr-2">例如 13 &rarr; 0013</span>
+              </div>
+            ),
+          }}
+        </NPopover>
       </div>
+
       <div>
         <span class="rounded bg-gray-500 px-1 select-all">up_name</span>
         <span class="ml-2">up昵称</span>
