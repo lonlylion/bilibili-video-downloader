@@ -7,6 +7,18 @@ import { useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
 import { SelectionArea } from '@viselect/vue'
 import FloatLabelInput from '../../../components/FloatLabelInput.vue'
 import { PhMagnifyingGlass } from '@phosphor-icons/vue'
+import {
+  NButton,
+  NDatePicker,
+  NDropdown,
+  NIcon,
+  NInputGroup,
+  NPagination,
+  NPopover,
+  NSelect,
+  NTab,
+  NTabs,
+} from 'naive-ui'
 
 const historyInfo = defineModel<HistoryInfo>('historyInfo', { required: true })
 

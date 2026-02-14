@@ -3,7 +3,7 @@ import { computed, inject, onMounted, ref, watch } from 'vue'
 import { commands, FavFolders, Folder, FavInfo, MediaInFav } from '../../../bindings.ts'
 import { SelectionArea } from '@viselect/vue'
 import { useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
-import { SelectOption } from 'naive-ui'
+import { NButton, NDropdown, NPagination, NSelect, SelectOption } from 'naive-ui'
 import { searchPaneRefKey } from '../../../injection_keys.ts'
 import FavCard from './FavCard.vue'
 

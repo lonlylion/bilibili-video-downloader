@@ -2,7 +2,7 @@
 import { ref, watchEffect, computed, nextTick, DeepReadonly, watch, useTemplateRef } from 'vue'
 import { PartialSelectionOptions, SelectionArea, SelectionEvent } from '@viselect/vue'
 import { commands } from '../../../bindings.ts'
-import { DropdownOption, NIcon } from 'naive-ui'
+import { DropdownOption, NDropdown, NIcon } from 'naive-ui'
 import { PhPause, PhChecks, PhTrash, PhCaretRight, PhArrowClockwise } from '@phosphor-icons/vue'
 import { useStore } from '../../../store.ts'
 import DownloadProgress from './DownloadProgress.vue'

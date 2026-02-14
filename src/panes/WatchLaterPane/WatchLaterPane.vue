@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useStore } from '../../store.ts'
 import { commands, WatchLaterInfo } from '../../bindings.ts'
 import WatchLaterPanel from './components/WatchLaterPanel.vue'
+import { NEmpty } from 'naive-ui'
 
 const store = useStore()
 

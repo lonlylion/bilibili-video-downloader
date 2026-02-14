@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { commands, FavInfo } from '../../bindings.ts'
 import { useStore } from '../../store.ts'
 import FavPanel from './components/FavPanel.vue'
+import { NEmpty } from 'naive-ui'
 
 const store = useStore()
 

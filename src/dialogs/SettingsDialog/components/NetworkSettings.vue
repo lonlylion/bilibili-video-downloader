@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { useStore } from '../../../store.ts'
-import { useMessage } from 'naive-ui'
+import {
+  NInput,
+  NInputGroup,
+  NInputGroupLabel,
+  NInputNumber,
+  NRadioButton,
+  NRadioGroup,
+  NTooltip,
+  useMessage,
+} from 'naive-ui'
 import { ref } from 'vue'
 
 const message = useMessage()

@@ -4,7 +4,7 @@ import { SelectionArea } from '@viselect/vue'
 import { ref, nextTick, computed, watch } from 'vue'
 import CollectionCard from './CollectionCard.vue'
 import { useEpisodeCard, useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
-import { TabsInst } from 'naive-ui'
+import { TabsInst, NButton, NCollapseTransition, NDropdown, NTab, NTabs } from 'naive-ui'
 import EpisodeCard, { EpisodeInfo } from './EpisodeCard.vue'
 
 const props = defineProps<{

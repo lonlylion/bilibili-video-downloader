@@ -6,6 +6,7 @@ import UncompletedProgresses from './components/UncompletedProgresses.vue'
 import CompletedProgresses from './components/CompletedProgresses.vue'
 import DownloadDirInput from './components/DownloadDirInput.vue'
 import { PhCheckCircle, PhCloudArrowDown } from '@phosphor-icons/vue'
+import { NBadge, NPagination, NTabPane, NTabs } from 'naive-ui'
 
 export type ProgressData = DownloadProgress & {
   state: DownloadTaskState

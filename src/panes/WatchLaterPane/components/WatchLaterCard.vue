@@ -7,6 +7,7 @@ import { PhDownloadSimple, PhGoogleChromeLogo, PhMagnifyingGlass } from '@phosph
 import SimpleCheckbox from '../../../components/SimpleCheckbox.vue'
 import { SearchType } from '../../SearchPane/SearchPane.vue'
 import IconButton from '../../../components/IconButton.vue'
+import { NTime } from 'naive-ui'
 
 const props = defineProps<{
   media: MediaInWatchLater

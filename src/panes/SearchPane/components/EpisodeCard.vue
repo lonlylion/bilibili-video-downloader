@@ -13,7 +13,7 @@ import {
 } from '../../../bindings.ts'
 import SimpleCheckbox from '../../../components/SimpleCheckbox.vue'
 import { PhDownloadSimple, PhGoogleChromeLogo, PhQueue, PhMagnifyingGlass } from '@phosphor-icons/vue'
-import { useDialog } from 'naive-ui'
+import { NTime, useDialog } from 'naive-ui'
 import PartsDialogContent from './PartsDialogContent.vue'
 import { ensureHttps, extractBvid, isElementInViewport, playTaskToQueueAnimation } from '../../../utils.tsx'
 import { navDownloadButtonRefKey } from '../../../injection_keys.ts'

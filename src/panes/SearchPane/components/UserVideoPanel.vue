@@ -5,6 +5,7 @@ import EpisodeCard, { EpisodeInfo } from './EpisodeCard.vue'
 import { useEpisodeCard, useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
 import { SelectionArea } from '@viselect/vue'
 import { searchPaneRefKey } from '../../../injection_keys.ts'
+import { NButton, NDropdown, NPagination } from 'naive-ui'
 
 const userVideoResult = defineModel<UserVideoSearchResult>('userVideoResult', { required: true })
 

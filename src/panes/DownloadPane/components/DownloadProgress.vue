@@ -13,7 +13,7 @@ import {
   PhMagnifyingGlass,
   PhWrench,
 } from '@phosphor-icons/vue'
-import { ProgressProps, useDialog } from 'naive-ui'
+import { NIcon, NProgress, NTime, ProgressProps, useDialog } from 'naive-ui'
 import UpInfoBadge from '../../../components/UpInfoBadge.vue'
 import { computed, DeepReadonly, inject } from 'vue'
 import ColorfulTag from '../../../components/ColorfulTag.vue'

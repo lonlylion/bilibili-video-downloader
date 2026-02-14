@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { commands, HistoryInfo } from '../../bindings.ts'
 import { useStore } from '../../store.ts'
 import HistoryPanel from './components/HistoryPanel.vue'
+import { NEmpty } from 'naive-ui'
 
 const store = useStore()
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { commands, QrcodeData, QrcodeStatus } from '../bindings.ts'
 import { ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { NDialog, NModal, NQrCode, NTabPane, NTabs, useMessage } from 'naive-ui'
 import { useStore } from '../store.ts'
 import icon from '../../src-tauri/icons/128x128.png'
 import FloatLabelInput from '../components/FloatLabelInput.vue'

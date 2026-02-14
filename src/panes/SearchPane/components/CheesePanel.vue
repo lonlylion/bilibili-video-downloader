@@ -5,6 +5,7 @@ import { ref, nextTick, watch, computed } from 'vue'
 import CollectionCard from './CollectionCard.vue'
 import { useEpisodeCard, useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
 import EpisodeCard, { EpisodeInfo } from './EpisodeCard.vue'
+import { NButton, NCollapseTransition, NDropdown } from 'naive-ui'
 
 const props = defineProps<{
   cheeseResult: CheeseSearchResult

@@ -1,6 +1,17 @@
 <script setup lang="tsx">
 import { LogEvent, LogLevel, events, commands } from '../bindings.ts'
-import { useNotification } from 'naive-ui'
+import {
+  NButton,
+  NCheckbox,
+  NConfigProvider,
+  NDialog,
+  NInput,
+  NInputGroup,
+  NModal,
+  NSelect,
+  NVirtualList,
+  useNotification,
+} from 'naive-ui'
 import { onMounted, ref, watch, computed } from 'vue'
 import { appDataDir } from '@tauri-apps/api/path'
 import { path } from '@tauri-apps/api'

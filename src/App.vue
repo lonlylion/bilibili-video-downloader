@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import AppContent from './AppContent.vue'
-import { GlobalThemeOverrides, zhCN, dateZhCN } from 'naive-ui'
+import {
+  GlobalThemeOverrides,
+  zhCN,
+  dateZhCN,
+  NConfigProvider,
+  NDialogProvider,
+  NModalProvider,
+  NNotificationProvider,
+  NMessageProvider,
+} from 'naive-ui'
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {

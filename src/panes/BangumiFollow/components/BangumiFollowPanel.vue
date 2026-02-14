@@ -5,7 +5,7 @@ import { useStore } from '../../../store.ts'
 import BangumiFollowCard from './BangumiFollowCard.vue'
 import { useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
 import { SelectionArea } from '@viselect/vue'
-import { SelectOption } from 'naive-ui'
+import { NButton, NDropdown, NPagination, NSelect, SelectOption } from 'naive-ui'
 
 const store = useStore()
 

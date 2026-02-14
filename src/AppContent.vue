@@ -24,6 +24,7 @@ import DownloadPane from './panes/DownloadPane/DownloadPane.vue'
 import { searchPaneRefKey, navDownloadButtonRefKey } from './injection_keys.ts'
 import BangumiFollowPane from './panes/BangumiFollow/BangumiFollowPane.vue'
 import HistoryPane from './panes/HistoryPane/HistoryPane.vue'
+import { NBadge, NButton, NIcon, NTooltip } from 'naive-ui'
 
 export type CurrentNavName = 'search' | 'fav' | 'history' | 'bangumi_follow' | 'watch_later' | 'download'
 

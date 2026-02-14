@@ -5,6 +5,7 @@ import { useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
 import { SelectionArea } from '@viselect/vue'
 import { searchPaneRefKey } from '../../../injection_keys.ts'
 import WatchLaterCard from './WatchLaterCard.vue'
+import { NButton, NDropdown, NPagination } from 'naive-ui'
 
 const watchLaterInfo = defineModel<WatchLaterInfo>('watchLaterInfo', { required: true })
 

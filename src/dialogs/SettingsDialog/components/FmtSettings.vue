@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { ref } from 'vue'
 import { useStore } from '../../../store.ts'
-import { NPopover } from 'naive-ui'
+import { NA, NConfigProvider, NInput, NPopover, NTooltip } from 'naive-ui'
 
 const store = useStore()
 

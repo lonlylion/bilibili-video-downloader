@@ -19,8 +19,6 @@
     "lazysizes": "^5.3.2",
     "naive-ui": "^2.42.0",
     "pinia": "^3.0.3",
-    "unplugin-auto-import": "^19.3.0",
-    "unplugin-vue-components": "^28.8.0",
     "vue": "^3.5.13",
     "vue-draggable-plus": "^0.6.0",
     "z-vue-scan": "^0.0.35"

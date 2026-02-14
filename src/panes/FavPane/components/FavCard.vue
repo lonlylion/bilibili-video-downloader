@@ -7,6 +7,7 @@ import { computed, inject, ref } from 'vue'
 import { navDownloadButtonRefKey } from '../../../injection_keys.ts'
 import { SearchType } from '../../SearchPane/SearchPane.vue'
 import IconButton from '../../../components/IconButton.vue'
+import { NTime } from 'naive-ui'
 
 const props = defineProps<{
   media: MediaInFav

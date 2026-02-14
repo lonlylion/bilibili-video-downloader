@@ -8,7 +8,7 @@ import DownloadSettings from './components/DownloadSettings.vue'
 import FmtSettings from './components/FmtSettings.vue'
 import NetworkSettings from './components/NetworkSettings.vue'
 import AssDanmakuSettings from './components/AssDanmakuSettings.vue'
-import { useMessage } from 'naive-ui'
+import { NButton, NDialog, NModal, NTabPane, NTabs, useMessage } from 'naive-ui'
 
 const store = useStore()
 
