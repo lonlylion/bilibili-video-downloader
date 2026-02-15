@@ -1,10 +1,10 @@
 <script setup lang="tsx">
 import { commands, NormalSearchResult, UgcSeason, SectionInNormal } from '../../../bindings.ts'
-import { SelectionArea } from '@viselect/vue'
-import { ref, nextTick, computed, watch } from 'vue'
+import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
+import { ref, nextTick, computed, watch, useTemplateRef } from 'vue'
 import CollectionCard from './CollectionCard.vue'
 import { useEpisodeCard, useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
-import { TabsInst, NButton, NCollapseTransition, NDropdown, NTab, NTabs } from 'naive-ui'
+import { NButton, NCollapseTransition, NDropdown, NTab, NTabs } from 'naive-ui'
 import EpisodeCard, { EpisodeInfo } from './EpisodeCard.vue'
 
 const props = defineProps<{
@@ -14,17 +14,26 @@ const props = defineProps<{
 
 const collectionCardShowing = ref<boolean>(false)
 
-const tabsInstRef = ref<TabsInst>()
+const tabsInstRef = useTemplateRef('tabsInstRef')
 
+const selectionOptions: PartialSelectionOptions = {
+  selectables: '.selectable',
+  features: { deselectOnBlur: true },
+  boundaries: '.normal-season-panel-selection-container',
+}
+const selectionAreaRef = useTemplateRef('selectionAreaRef')
 const { selectedIds, updateSelectedIds, unselectAll } = useEpisodeSelection()
-const selectionAreaRef = ref<InstanceType<typeof SelectionArea>>()
 const checkedIds = ref<Set<number>>(new Set())
 
-const rootDivRef = ref<HTMLDivElement>()
-const episodeCardRefs = ref<InstanceType<typeof EpisodeCard>[]>([])
+const rootDivRef = useTemplateRef('rootDivRef')
+const episodeCardRefs = useTemplateRef('episodeCardRefs')
 const episodeCardRefsMap = computed<Map<number, InstanceType<typeof EpisodeCard>>>(() => {
   const map = new Map<number, InstanceType<typeof EpisodeCard>>()
-  episodeCardRefs.value.forEach((card) => map.set(card.episodeInfo.aid, card))
+  episodeCardRefs.value?.forEach((card) => {
+    if (card !== null) {
+      map.set(card.episodeInfo.aid, card)
+    }
+  })
   return map
 })
 
@@ -104,7 +113,7 @@ watch(
     await nextTick()
     tabsInstRef.value?.syncBarPosition()
 
-    if (rootDivRef.value === undefined) {
+    if (rootDivRef.value === null) {
       return
     }
 
@@ -138,13 +147,10 @@ async function downloadCheckedEpisodes() {
 
 <template>
   <div class="flex flex-col h-full select-none" ref="rootDivRef">
-    <SelectionArea
-      ref="selectionAreaRef"
-      class="selection-container flex flex-col flex-1 px-2 pt-0 overflow-auto"
-      :options="{ selectables: '.selectable', features: { deselectOnBlur: true } }"
-      @contextmenu="showDropdown"
-      @move="updateSelectedIds"
-      @start="unselectAll">
+    <SelectionArea ref="selectionAreaRef" :options="selectionOptions" @move="updateSelectedIds" @start="unselectAll" />
+    <div
+      class="normal-season-panel-selection-container flex flex-col flex-1 px-2 pt-0 overflow-auto"
+      @contextmenu="showDropdown">
       <div class="animate-pulse text-violet">左键拖动进行框选，右键打开菜单，滚轮可以滚动底部的标签</div>
       <div class="flex flex-wrap gap-2">
         <EpisodeCard
@@ -161,7 +167,7 @@ async function downloadCheckedEpisodes() {
           :handle-checkbox-click="handleCheckboxClick"
           :handle-context-menu="handleContextMenu" />
       </div>
-    </SelectionArea>
+    </div>
 
     <n-tabs
       ref="tabsInstRef"
@@ -203,7 +209,7 @@ async function downloadCheckedEpisodes() {
 </template>
 
 <style scoped>
-.selection-container .selected {
+.normal-season-panel-selection-container .selected {
   @apply bg-[rgb(204,232,255)];
 }
 

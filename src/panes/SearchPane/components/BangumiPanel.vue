@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { BangumiSearchResult, commands, EpInBangumi } from '../../../bindings.ts'
-import { SelectionArea } from '@viselect/vue'
-import { ref, nextTick, watch, computed } from 'vue'
+import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
+import { ref, nextTick, watch, computed, useTemplateRef } from 'vue'
 import CollectionCard from './CollectionCard.vue'
 import { useEpisodeCard, useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
 import EpisodeCard, { EpisodeInfo } from './EpisodeCard.vue'
@@ -13,15 +13,24 @@ const props = defineProps<{
 
 const collectionCardShowing = ref<boolean>(false)
 
+const selectionOptions: PartialSelectionOptions = {
+  selectables: '.selectable',
+  features: { deselectOnBlur: true },
+  boundaries: '.bangumi-panel-selection-container',
+}
+const selectionAreaRef = useTemplateRef('selectionAreaRef')
 const { selectedIds, updateSelectedIds, unselectAll } = useEpisodeSelection()
-const selectionAreaRef = ref<InstanceType<typeof SelectionArea>>()
 const checkedIds = ref<Set<number>>(new Set())
 
-const rootDivRef = ref<HTMLDivElement>()
-const episodeCardRefs = ref<InstanceType<typeof EpisodeCard>[]>([])
+const rootDivRef = useTemplateRef('rootDivRef')
+const episodeCardRefs = useTemplateRef('episodeCardRefs')
 const episodeCardRefsMap = computed<Map<number, InstanceType<typeof EpisodeCard>>>(() => {
   const map = new Map<number, InstanceType<typeof EpisodeCard>>()
-  episodeCardRefs.value.forEach((card) => map.set(card.episodeInfo.aid, card))
+  episodeCardRefs.value?.forEach((card) => {
+    if (card !== null) {
+      map.set(card.episodeInfo.aid, card)
+    }
+  })
   return map
 })
 
@@ -130,12 +139,12 @@ watch(
 
     await nextTick()
 
-    if (rootDivRef.value === undefined) {
+    if (rootDivRef.value === null) {
       return
     }
 
     const targetElement = rootDivRef.value.querySelector(`[data-key="${episode.aid}"]`)
-    if (targetElement !== null) {
+    if (targetElement !== undefined && targetElement !== null) {
       targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   },
@@ -184,13 +193,10 @@ function playCardDownloadAnimation(aid: number) {
 
 <template>
   <div class="flex flex-col h-full select-none" ref="rootDivRef">
-    <SelectionArea
-      ref="selectionAreaRef"
-      class="selection-container flex flex-col flex-1 px-2 pt-0 overflow-auto"
-      :options="{ selectables: '.selectable', features: { deselectOnBlur: true } }"
-      @contextmenu="showDropdown"
-      @move="updateSelectedIds"
-      @start="unselectAll">
+    <SelectionArea ref="selectionAreaRef" :options="selectionOptions" @move="updateSelectedIds" @start="unselectAll" />
+    <div
+      class="bangumi-panel-selection-container flex flex-col flex-1 px-2 pt-0 overflow-auto"
+      @contextmenu="showDropdown">
       <div class="animate-pulse text-violet">左键拖动进行框选，右键打开菜单，滚轮可以滚动底部的标签</div>
       <div class="flex flex-wrap gap-2">
         <EpisodeCard
@@ -207,7 +213,7 @@ function playCardDownloadAnimation(aid: number) {
           :handle-checkbox-click="handleCheckboxClick"
           :handle-context-menu="handleContextMenu" />
       </div>
-    </SelectionArea>
+    </div>
 
     <n-tabs class="select-none mt-2" v-model:value="currentTabIndex" type="line" size="small" placement="bottom">
       <n-tab v-for="(tabName, index) in tabNames" :key="index" :name="index" :tab="tabName" />
@@ -243,7 +249,7 @@ function playCardDownloadAnimation(aid: number) {
 </template>
 
 <style scoped>
-.selection-container .selected {
+.bangumi-panel-selection-container .selected {
   @apply bg-[rgb(204,232,255)];
 }
 
