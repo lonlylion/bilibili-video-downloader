@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { commands, FavFolders, Folder, FavInfo, MediaInFav } from '../../../bindings.ts'
-import { SelectionArea } from '@viselect/vue'
+import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
 import { useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
 import { NButton, NDropdown, NPagination, NSelect, SelectOption } from 'naive-ui'
 import { searchPaneRefKey } from '../../../injection_keys.ts'
@@ -65,15 +65,20 @@ async function getFav(page: number) {
   favInfo.value = result.data
 }
 
-const favCardRefs = ref<InstanceType<typeof FavCard>[]>([])
+const favCardRefs = useTemplateRef<InstanceType<typeof FavCard>[]>('favCardRefs')
 const favCardRefsMap = computed<Map<number, InstanceType<typeof FavCard>>>(() => {
   const map = new Map<number, InstanceType<typeof FavCard>>()
-  favCardRefs.value.forEach((card) => map.set(card.media.id, card))
+  favCardRefs.value?.forEach((card) => map.set(card.media.id, card))
   return map
 })
 
+const selectionOptions: PartialSelectionOptions = {
+  selectables: '.selectable',
+  features: { deselectOnBlur: true },
+  boundaries: '.fav-panel-selection-container',
+}
+const selectionAreaRef = useTemplateRef('selectionAreaRef')
 const { selectedIds, updateSelectedIds, unselectAll } = useEpisodeSelection()
-const selectionAreaRef = ref<InstanceType<typeof SelectionArea>>()
 const checkedIds = ref<Set<number>>(new Set())
 
 watch(favInfo, async () => {
@@ -171,13 +176,8 @@ function useFavCard(
 
 <template>
   <div class="flex flex-col h-full select-none overflow-auto">
-    <SelectionArea
-      ref="selectionAreaRef"
-      class="selection-container flex flex-col flex-1 px-2 overflow-auto"
-      :options="{ selectables: '.selectable', features: { deselectOnBlur: true } }"
-      @contextmenu="showDropdown"
-      @move="updateSelectedIds"
-      @start="unselectAll">
+    <SelectionArea ref="selectionAreaRef" :options="selectionOptions" @move="updateSelectedIds" @start="unselectAll" />
+    <div class="fav-panel-selection-container flex flex-col flex-1 px-2 overflow-auto" @contextmenu="showDropdown">
       <div class="animate-pulse text-violet">左键拖动进行框选，右键打开菜单</div>
       <div class="flex flex-wrap gap-2">
         <template v-for="media in favInfo.medias" :key="media.id">
@@ -210,7 +210,7 @@ function useFavCard(
             :media="media" />
         </template>
       </div>
-    </SelectionArea>
+    </div>
 
     <div class="flex gap-2 m-2 box-border">
       <n-pagination :page-count="pageCount" :page="currentPage" @update:page="getFav($event)" />
@@ -230,7 +230,7 @@ function useFavCard(
 </template>
 
 <style scoped>
-.selection-container .selected {
+.fav-panel-selection-container .selected {
   @apply bg-[rgb(204,232,255)];
 }
 </style>
