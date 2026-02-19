@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { BangumiFollowInfo, commands, EpInBangumiFollow } from '../../../bindings.ts'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useStore } from '../../../store.ts'
 import BangumiFollowCard from './BangumiFollowCard.vue'
 import { useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
-import { SelectionArea } from '@viselect/vue'
+import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
 import { NButton, NDropdown, NPagination, NSelect, SelectOption } from 'naive-ui'
 
 const store = useStore()
@@ -33,15 +33,24 @@ const pageCount = computed<number>(() => {
   return Math.ceil(bangumiFollowInfo.value.total / 24)
 })
 
-const bangumiFollowCardRefs = ref<InstanceType<typeof BangumiFollowCard>[]>([])
+const bangumiFollowCardRefs = useTemplateRef('bangumiFollowCardRefs')
 const bangumiFollowCardRefsMap = computed<Map<number, InstanceType<typeof BangumiFollowCard>>>(() => {
   const map = new Map<number, InstanceType<typeof BangumiFollowCard>>()
-  bangumiFollowCardRefs.value.forEach((card) => map.set(card.ep.season_id, card))
+  bangumiFollowCardRefs.value?.forEach((card) => {
+    if (card !== null) {
+      map.set(card.ep.season_id, card)
+    }
+  })
   return map
 })
 
+const selectionOptions: PartialSelectionOptions = {
+  selectables: '.selectable',
+  features: { deselectOnBlur: true },
+  boundaries: '.bangumi-follow-panel-selection-container',
+}
+const selectionAreaRef = useTemplateRef('selectionAreaRef')
 const { selectedIds, updateSelectedIds, unselectAll } = useEpisodeSelection()
-const selectionAreaRef = ref<InstanceType<typeof SelectionArea>>()
 const checkedIds = ref<Set<number>>(new Set())
 
 watch(bangumiFollowInfo, () => {
@@ -160,13 +169,10 @@ function useBangumiFollowCard(
 
 <template>
   <div class="flex flex-col h-full select-none overflow-auto">
-    <SelectionArea
-      ref="selectionAreaRef"
-      class="selection-container flex flex-col flex-1 px-2 overflow-auto"
-      :options="{ selectables: '.selectable', features: { deselectOnBlur: true } }"
-      @contextmenu="showDropdown"
-      @move="updateSelectedIds"
-      @start="unselectAll">
+    <SelectionArea ref="selectionAreaRef" :options="selectionOptions" @move="updateSelectedIds" @start="unselectAll" />
+    <div
+      class="bangumi-follow-panel-selection-container flex flex-col flex-1 px-2 overflow-auto"
+      @contextmenu="showDropdown">
       <div class="animate-pulse text-violet">左键拖动进行框选，右键打开菜单</div>
       <div class="flex flex-wrap gap-2">
         <BangumiFollowCard
@@ -184,7 +190,7 @@ function useBangumiFollowCard(
           :handle-checkbox-click="handleCheckboxClick"
           :handle-context-menu="handleContextMenu" />
       </div>
-    </SelectionArea>
+    </div>
     <div class="flex gap-2 m-2 box-border">
       <n-pagination :page-count="pageCount" :page="currentPage" @update:page="getBangumiFollowInfo($event)" />
       <n-select
@@ -214,7 +220,7 @@ function useBangumiFollowCard(
 </template>
 
 <style scoped>
-.selection-container .selected {
+.bangumi-follow-panel-selection-container .selected {
   @apply bg-[rgb(204,232,255)];
 }
 </style>
