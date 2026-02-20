@@ -1,5 +1,5 @@
 <script setup lang="tsx">
-import { onMounted, ref, provide } from 'vue'
+import { onMounted, ref, provide, useTemplateRef } from 'vue'
 import { useStore } from './store.ts'
 import LogDialog from './dialogs/LogDialog.vue'
 import {
@@ -36,8 +36,8 @@ const logDialogShowing = ref<boolean>(false)
 const aboutDialogShowing = ref<boolean>(false)
 const settingsDialogShowing = ref<boolean>(false)
 
-const searchPaneRef = ref<InstanceType<typeof SearchPane>>()
-const downloadButtonRef = ref<HTMLDivElement>()
+const searchPaneRef = useTemplateRef('searchPaneRef')
+const downloadButtonRef = useTemplateRef('downloadButtonRef')
 
 provide(searchPaneRefKey, searchPaneRef)
 provide(navDownloadButtonRefKey, downloadButtonRef)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, useTemplateRef } from 'vue'
 import { commands, DownloadProgress, DownloadTaskState, events } from '../../bindings.ts'
 import { useStore } from '../../store.ts'
 import UncompletedProgresses from './components/UncompletedProgresses.vue'
@@ -19,8 +19,8 @@ const store = useStore()
 
 const currentTabName = ref<'uncompleted' | 'completed'>('uncompleted')
 
-const uncompletedProgressesRef = ref<InstanceType<typeof UncompletedProgresses>>()
-const completedProgressesRef = ref<InstanceType<typeof CompletedProgresses>>()
+const uncompletedProgressesRef = useTemplateRef<InstanceType<typeof UncompletedProgresses>>('uncompletedProgressesRef')
+const completedProgressesRef = useTemplateRef<InstanceType<typeof CompletedProgresses>>('completedProgressesRef')
 
 onMounted(async () => {
   await events.downloadEvent.listen(({ payload: { event, data } }) => {
@@ -189,13 +189,13 @@ onMounted(async () => {
 
       <template #suffix>
         <n-pagination
-          v-if="currentTabName === 'uncompleted' && uncompletedProgressesRef"
+          v-if="currentTabName === 'uncompleted' && uncompletedProgressesRef !== null"
           class="ml-auto mr-2"
           :page-count="uncompletedProgressesRef.pageCount"
           v-model:page="uncompletedProgressesRef.currentPage" />
 
         <n-pagination
-          v-else-if="currentTabName === 'completed' && completedProgressesRef"
+          v-else-if="currentTabName === 'completed' && completedProgressesRef !== null"
           class="ml-auto mr-2"
           :page-count="completedProgressesRef.pageCount"
           v-model:page="completedProgressesRef.currentPage" />
