@@ -67,6 +67,7 @@ pub struct DownloadProgress {
     pub create_ts: u64,
     pub completed_ts: Option<u64>,
     pub is_drm: bool,
+    pub is_preview: bool,
 }
 
 impl DownloadProgress {
@@ -140,6 +141,7 @@ impl DownloadProgress {
             create_ts,
             completed_ts: None,
             is_drm: false,
+            is_preview: false,
         };
 
         Ok(progress)
@@ -188,6 +190,7 @@ impl DownloadProgress {
             create_ts,
             completed_ts: None,
             is_drm: false,
+            is_preview: false,
         };
 
         Ok(progress)
@@ -336,6 +339,8 @@ impl DownloadProgress {
                     .await
                     .context("获取视频链接失败")?;
 
+                self.is_preview = !media_url.durl.is_empty() && media_url.dash.video.is_empty();
+
                 if video_selected && !video_completed {
                     // 如果视频被选中且未完成，则准备视频任务
                     self.video_task.prepare_normal(app, &media_url).await?;
@@ -351,6 +356,8 @@ impl DownloadProgress {
                     .get_bangumi_url(self.cid)
                     .await
                     .context("获取番剧视频链接失败")?;
+
+                self.is_preview = media_url.is_preview != 0;
 
                 if video_selected && !video_completed {
                     // 如果视频被选中且未完成，则准备视频任务
@@ -372,6 +379,7 @@ impl DownloadProgress {
                     .context("获取课程视频链接失败")?;
 
                 self.is_drm = media_url.is_drm;
+                self.is_preview = media_url.is_preview != 0;
 
                 if video_selected && !video_completed {
                     // 如果视频被选中且未完成，则准备视频任务
@@ -522,6 +530,7 @@ fn create_normal_progresses_for_single(
             create_ts,
             completed_ts: None,
             is_drm: false,
+            is_preview: false,
         };
 
         return Ok(vec![progress]);
@@ -559,6 +568,7 @@ fn create_normal_progresses_for_single(
             create_ts,
             completed_ts: None,
             is_drm: false,
+            is_preview: false,
         };
 
         return Ok(vec![progress]);
@@ -596,6 +606,7 @@ fn create_normal_progresses_for_single(
             create_ts,
             completed_ts: None,
             is_drm: false,
+            is_preview: false,
         };
 
         progresses.push(progress);
@@ -665,6 +676,7 @@ fn create_normal_progresses_for_season(
             create_ts,
             completed_ts: None,
             is_drm: false,
+            is_preview: false,
         };
 
         return Ok(vec![progress]);
@@ -702,6 +714,7 @@ fn create_normal_progresses_for_season(
             create_ts,
             completed_ts: None,
             is_drm: false,
+            is_preview: false,
         };
 
         return Ok(vec![progress]);
@@ -740,6 +753,7 @@ fn create_normal_progresses_for_season(
             create_ts,
             completed_ts: None,
             is_drm: false,
+            is_preview: false,
         };
 
         progresses.push(progress);

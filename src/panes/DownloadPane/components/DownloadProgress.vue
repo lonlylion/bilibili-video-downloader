@@ -161,11 +161,9 @@ function handleModifyClick() {
           :key="p.cover_task.url"
           alt=""
           draggable="false" />
-        <div
-          v-if="p.is_drm"
-          class="absolute top-3 left-3 z-1 bg-red-5 text-white px-1 rounded"
-          title="该资源受版权保护(DRM)">
-          🔒DRM
+        <div class="absolute top-3 left-3 z-1 flex gap-2">
+          <div v-if="p.is_drm" class="bg-red-5 text-white px-1 rounded" title="该资源受版权保护(DRM)">🔒DRM</div>
+          <div v-if="p.is_preview" class="bg-[#ff6699] text-white px-1 rounded" title="该资源为试看部分">试看</div>
         </div>
       </div>
 
