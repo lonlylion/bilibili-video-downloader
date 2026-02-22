@@ -20,7 +20,7 @@ body:
     id: reproduction
     attributes:
       label: 复现步骤
-      description: 这是整个issue中**最重要**的部分
+      description: 这是整个issue中**最重要**的部分，请参考[这个issue](https://github.com/lanyeeee/bilibili-video-downloader/issues/1)认真填写，否则开发者会假装看不见，甚至直接关闭issue
       placeholder: |
         复现步骤是影响issue处理效率的最大因素
         没有详细的复现步骤将导致问题难以被定位，开发者需要花费大量时间来回沟通以定位问题
