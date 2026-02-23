@@ -1,6 +1,8 @@
 <!--
 PR请提交至 develop 分支
 
+提交前请先运行 pnpm format 以保证代码格式正确
+
 如果想新加一个功能，请先开个 issue 或 discussion 讨论一下，避免无效工作
 
 其他情况的PR欢迎直接提交，比如：
