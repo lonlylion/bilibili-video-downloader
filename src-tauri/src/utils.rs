@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use byteorder::{BigEndian, ReadBytesExt};
 
 use crate::{

@@ -10,12 +10,12 @@ use tracing_appender::{
     rolling::{RollingFileAppender, Rotation},
 };
 use tracing_subscriber::{
-    filter::{filter_fn, FilterExt, Targets},
+    Layer, Registry,
+    filter::{FilterExt, Targets, filter_fn},
     fmt::{layer, time::LocalTime},
     layer::SubscriberExt,
     registry::LookupSpan,
     util::SubscriberInitExt,
-    Layer, Registry,
 };
 
 use crate::{

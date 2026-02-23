@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use chrono::{DateTime, Datelike, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use specta::Type;

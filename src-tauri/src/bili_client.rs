@@ -1,18 +1,18 @@
 use std::time::Duration;
 
-use anyhow::{anyhow, Context};
-use base64::{engine::general_purpose, Engine};
+use anyhow::{Context, anyhow};
+use base64::{Engine, engine::general_purpose};
 use bytes::Bytes;
 use parking_lot::RwLock;
 use prost::Message;
 use reqwest::{Client, StatusCode};
 use reqwest_middleware::ClientWithMiddleware;
-use reqwest_retry::{policies::ExponentialBackoff, Jitter, RetryTransientMiddleware};
+use reqwest_retry::{Jitter, RetryTransientMiddleware, policies::ExponentialBackoff};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{
-    http::{HeaderMap, HeaderValue},
     AppHandle,
+    http::{HeaderMap, HeaderValue},
 };
 use tokio::task::JoinSet;
 

@@ -5,7 +5,7 @@ use parking_lot::RwLock;
 use tauri::AppHandle;
 use tauri_specta::Event;
 use tokio::{
-    sync::{watch, SemaphorePermit},
+    sync::{SemaphorePermit, watch},
     time::sleep,
 };
 
