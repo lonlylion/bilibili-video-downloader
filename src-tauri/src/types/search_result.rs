@@ -9,6 +9,7 @@ use super::{
     user_video_info::UserVideoInfo,
 };
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 pub enum SearchResult {
     Normal(NormalSearchResult),

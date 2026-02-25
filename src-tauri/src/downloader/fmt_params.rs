@@ -95,16 +95,16 @@ impl FmtParams {
 
 #[allow(clippy::cast_possible_wrap)]
 fn format_time_fields(json_map: &mut Map<String, Value>, time_fmt: &str) {
-    if let Some(ts) = json_map.get("pub_ts").and_then(Value::as_i64) {
-        if let Some(ts_string) = ts_to_string(ts, time_fmt) {
-            json_map.insert("pub_ts".to_string(), Value::String(ts_string));
-        }
+    if let Some(ts) = json_map.get("pub_ts").and_then(Value::as_i64)
+        && let Some(ts_string) = ts_to_string(ts, time_fmt)
+    {
+        json_map.insert("pub_ts".to_string(), Value::String(ts_string));
     }
 
-    if let Some(ts) = json_map.get("create_ts").and_then(Value::as_u64) {
-        if let Some(ts_string) = ts_to_string(ts as i64, time_fmt) {
-            json_map.insert("create_ts".to_string(), Value::String(ts_string));
-        }
+    if let Some(ts) = json_map.get("create_ts").and_then(Value::as_u64)
+        && let Some(ts_string) = ts_to_string(ts as i64, time_fmt)
+    {
+        json_map.insert("create_ts".to_string(), Value::String(ts_string));
     }
 }
 

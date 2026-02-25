@@ -195,12 +195,12 @@ async fn file_log_watcher(app: AppHandle) {
     while let Some(res) = receiver.recv().await {
         match res.map_err(anyhow::Error::from) {
             Ok(event) => {
-                if let notify::EventKind::Remove(_) = event.kind {
-                    if let Err(err) = reload_file_logger() {
-                        let err_title = "重置日志文件失败";
-                        let string_chain = err.to_string_chain();
-                        tracing::error!(err_title, message = string_chain);
-                    }
+                if let notify::EventKind::Remove(_) = event.kind
+                    && let Err(err) = reload_file_logger()
+                {
+                    let err_title = "重置日志文件失败";
+                    let string_chain = err.to_string_chain();
+                    tracing::error!(err_title, message = string_chain);
                 }
             }
             Err(err) => {

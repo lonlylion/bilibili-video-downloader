@@ -10,13 +10,20 @@ mod logger;
 mod types;
 mod utils;
 mod wbi;
-#[allow(dead_code)]
+#[allow(warnings)]
 mod protobuf {
     include!("./bilibili.community.service.dm.v1.rs");
 }
 
 use anyhow::Context;
-use commands::*;
+use commands::{
+    create_download_tasks, delete_download_tasks, generate_qrcode, get_available_media_formats,
+    get_bangumi_follow_info, get_bangumi_info, get_config, get_fav_folders, get_fav_info,
+    get_history_info, get_logs_dir_size, get_normal_info, get_qrcode_status, get_skip_segments,
+    get_user_info, get_user_video_info, get_watch_later_info, pause_download_tasks,
+    restart_download_task, restart_download_tasks, restore_download_tasks, resume_download_tasks,
+    save_config, search, show_path_in_file_manager,
+};
 use config::Config;
 use parking_lot::RwLock;
 use tauri::{Manager, Wry};
@@ -31,6 +38,7 @@ fn generate_context() -> tauri::Context<Wry> {
     tauri::generate_context!()
 }
 
+#[allow(clippy::missing_panics_doc)]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri_specta::Builder::<Wry>::new()
@@ -76,7 +84,9 @@ pub fn run() {
 
     // 解决Ubuntu24.04窗口全白的问题
     #[cfg(target_os = "linux")]
-    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    unsafe {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

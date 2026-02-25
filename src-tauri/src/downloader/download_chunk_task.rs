@@ -53,7 +53,7 @@ impl DownloadChunkTask {
                         sleep(Duration::from_millis(100)).await;
                         if let Some(permit) = permit.take() {
                             drop(permit);
-                        };
+                        }
                     }
                 },
 

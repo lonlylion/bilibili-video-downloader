@@ -183,7 +183,7 @@ impl DownloadTask {
                     download_task_option = None;
                     if let Some(permit) = permit.take() {
                         drop(permit);
-                    };
+                    }
                 }
 
                 () = self.acquire_task_permit(&mut permit), if state_is_pending => {},
@@ -333,7 +333,7 @@ impl DownloadTask {
             tracing::debug!("ID为`{task_id}`的下载任务已暂停");
             if let Some(permit) = permit.take() {
                 drop(permit);
-            };
+            }
         }
     }
 

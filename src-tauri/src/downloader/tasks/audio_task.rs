@@ -121,7 +121,7 @@ impl AudioTask {
             }
         }
 
-        self.prepare(app, medias);
+        self.prepare(app, &medias);
 
         Ok(())
     }
@@ -181,7 +181,7 @@ impl AudioTask {
             }
         }
 
-        self.prepare(app, medias);
+        self.prepare(app, &medias);
 
         Ok(())
     }
@@ -241,12 +241,12 @@ impl AudioTask {
             }
         }
 
-        self.prepare(app, medias);
+        self.prepare(app, &medias);
 
         Ok(())
     }
 
-    fn prepare(&mut self, app: &AppHandle, medias: Vec<MediaForPrepare>) {
+    fn prepare(&mut self, app: &AppHandle, medias: &[MediaForPrepare]) {
         if medias.is_empty() {
             self.completed = true;
             return;
@@ -256,10 +256,9 @@ impl AudioTask {
         let prefer_select_by_priority = self.audio_quality == AudioQuality::Unknown;
 
         let selected_media = if prefer_select_by_priority {
-            select_media_by_priority(app, &medias)
+            select_media_by_priority(app, medias)
         } else {
-            select_exact_match_media(self, &medias)
-                .or_else(|| select_media_by_priority(app, &medias))
+            select_exact_match_media(self, medias).or_else(|| select_media_by_priority(app, medias))
         };
 
         let Some(media) = selected_media else {

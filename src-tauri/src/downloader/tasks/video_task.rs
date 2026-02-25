@@ -101,7 +101,7 @@ impl VideoTask {
             }
         }
 
-        self.prepare(app, medias)?;
+        self.prepare(app, &medias)?;
 
         Ok(())
     }
@@ -171,7 +171,7 @@ impl VideoTask {
             }
         }
 
-        self.prepare(app, medias)?;
+        self.prepare(app, &medias)?;
 
         Ok(())
     }
@@ -241,12 +241,12 @@ impl VideoTask {
             }
         }
 
-        self.prepare(app, medias)?;
+        self.prepare(app, &medias)?;
 
         Ok(())
     }
 
-    fn prepare(&mut self, app: &AppHandle, medias: Vec<MediaForPrepare>) -> anyhow::Result<()> {
+    fn prepare(&mut self, app: &AppHandle, medias: &[MediaForPrepare]) -> anyhow::Result<()> {
         if medias.is_empty() {
             return Err(anyhow!("获取视频地址失败，medias为空"));
         }
@@ -264,10 +264,9 @@ impl VideoTask {
         let prefer_select_by_priority = video_quality_is_unknown;
 
         let selected_media = if prefer_select_by_priority {
-            select_media_by_priority(app, &medias)
+            select_media_by_priority(app, medias)
         } else {
-            select_exact_match_media(self, &medias)
-                .or_else(|| select_media_by_priority(app, &medias))
+            select_exact_match_media(self, medias).or_else(|| select_media_by_priority(app, medias))
         };
 
         let media = selected_media.context("获取视频地址失败，medias为空")?;

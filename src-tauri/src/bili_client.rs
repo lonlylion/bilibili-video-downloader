@@ -832,10 +832,10 @@ impl BiliClient {
         let request = self.content_length_client.read().head(media_url);
         let http_resp = request.send().await?;
         let status = http_resp.status();
-        if status == StatusCode::OK {
-            if let Ok(content_length) = parse_content_length(http_resp.headers()) {
-                return Ok(content_length);
-            }
+        if status == StatusCode::OK
+            && let Ok(content_length) = parse_content_length(http_resp.headers())
+        {
+            return Ok(content_length);
         }
 
         // 部分 upos/CDN 对 HEAD 支持不完整（尤其是高码率/高帧率流），这里降级用 Range 请求探测总大小
