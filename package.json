@@ -8,7 +8,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "format": "prettier . -w && cd src-tauri && cargo fmt --all"
+    "format": "prettier . -w && cd src-tauri && cargo fmt --all",
+    "check": "prettier . --check && eslint -c eslint.config.js --max-warnings=0 src && vue-tsc --noEmit && cd src-tauri && cargo clippy -- -D warnings"
   },
   "dependencies": {
     "@phosphor-icons/vue": "^2.2.1",
