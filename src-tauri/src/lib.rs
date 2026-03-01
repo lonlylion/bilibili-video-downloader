@@ -15,7 +15,6 @@ mod protobuf {
     include!("./bilibili.community.service.dm.v1.rs");
 }
 
-use anyhow::Context;
 use commands::{
     create_download_tasks, delete_download_tasks, generate_qrcode, get_available_media_formats,
     get_bangumi_follow_info, get_bangumi_info, get_config, get_fav_folders, get_fav_info,
@@ -25,6 +24,7 @@ use commands::{
     save_config, search, show_path_in_file_manager,
 };
 use config::Config;
+use eyre::WrapErr;
 use parking_lot::RwLock;
 use tauri::{Manager, Wry};
 
@@ -99,9 +99,9 @@ pub fn run() {
             let app_data_dir = app
                 .path()
                 .app_data_dir()
-                .context("获取app_data_dir目录失败")?;
+                .wrap_err("获取app_data_dir目录失败")?;
 
-            std::fs::create_dir_all(&app_data_dir).context(format!(
+            std::fs::create_dir_all(&app_data_dir).wrap_err(format!(
                 "创建app_data_dir目录`{:?}`失败",
                 app_data_dir.display()
             ))?;

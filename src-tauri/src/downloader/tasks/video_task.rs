@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{Context, anyhow};
+use eyre::{OptionExt, WrapErr, eyre};
 use fs4::fs_std::FileExt;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,7 @@ use crate::{
         download_chunk_task::DownloadChunkTask, download_progress::DownloadProgress,
         download_task::DownloadTask, media_chunk::MediaChunk,
     },
-    extensions::{AnyhowErrorToStringChain, AppHandleExt},
+    extensions::{AppHandleExt, EyreToStringChain},
     types::{
         bangumi_media_url::BangumiMediaUrl, cheese_media_url::CheeseMediaUrl,
         codec_type::CodecType, normal_media_url::NormalMediaUrl, video_quality::VideoQuality,
@@ -46,7 +46,7 @@ impl VideoTask {
         &mut self,
         app: &AppHandle,
         media_url: &NormalMediaUrl,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let mut join_set = JoinSet::new();
 
         for media in &media_url.dash.video {
@@ -110,7 +110,7 @@ impl VideoTask {
         &mut self,
         app: &AppHandle,
         media_url: &BangumiMediaUrl,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let mut medias: Vec<MediaForPrepare> = Vec::new();
 
         let mut join_set = JoinSet::new();
@@ -180,7 +180,7 @@ impl VideoTask {
         &mut self,
         app: &AppHandle,
         media_url: &CheeseMediaUrl,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let mut medias: Vec<MediaForPrepare> = Vec::new();
 
         let mut join_set = JoinSet::new();
@@ -246,16 +246,16 @@ impl VideoTask {
         Ok(())
     }
 
-    fn prepare(&mut self, app: &AppHandle, medias: &[MediaForPrepare]) -> anyhow::Result<()> {
+    fn prepare(&mut self, app: &AppHandle, medias: &[MediaForPrepare]) -> eyre::Result<()> {
         if medias.is_empty() {
-            return Err(anyhow!("获取视频地址失败，medias为空"));
+            return Err(eyre!("获取视频地址失败，medias为空"));
         }
 
         let video_quality_is_unknown = self.video_quality == VideoQuality::Unknown;
         let codec_type_is_unknown = self.codec_type == CodecType::Unknown;
 
         if video_quality_is_unknown != codec_type_is_unknown {
-            return Err(anyhow!(
+            return Err(eyre!(
                 "`video_quality`和`codec_type`必须同时为`Unknown`或同时不为`Unknown`"
             ));
         }
@@ -269,7 +269,7 @@ impl VideoTask {
             select_exact_match_media(self, medias).or_else(|| select_media_by_priority(app, medias))
         };
 
-        let media = selected_media.context("获取视频地址失败，medias为空")?;
+        let media = selected_media.ok_or_eyre("获取视频地址失败，medias为空")?;
 
         self.video_quality = media.id.into();
         self.codec_type = media.codecid.into();
@@ -322,7 +322,7 @@ impl VideoTask {
         &self,
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
         let (video_task, episode_title, ids_string) = {
             let progress = download_task.progress.read();
@@ -389,7 +389,7 @@ impl VideoTask {
             let chunk_order = i + 1;
 
             join_set.spawn(async move {
-                download_chunk_task.process().await.context(format!(
+                download_chunk_task.process().await.wrap_err(format!(
                     "分片`{chunk_order}/{chunk_count}`下载失败({start}-{end})"
                 ))
             });
@@ -418,20 +418,20 @@ impl VideoTask {
             .iter()
             .all(|chunk| chunk.completed);
         if !download_completed {
-            return Err(anyhow!(
+            return Err(eyre!(
                 "视频文件`{}`有分片未下载完成，[继续]可以跳过已下载分片断点续传",
                 temp_file_path.display()
             ));
         }
 
-        let is_video_file_complete = utils::is_mp4_complete(&temp_file_path).context(format!(
+        let is_video_file_complete = utils::is_mp4_complete(&temp_file_path).wrap_err(format!(
             "检查视频文件`{}`是否完整失败",
             temp_file_path.display()
         ))?;
 
         if !is_video_file_complete {
             download_task.update_progress(|p| p.video_task.mark_uncompleted());
-            return Err(anyhow!(
+            return Err(eyre!(
                 "视频文件`{}`不完整，[继续]会重新下载所有分片",
                 temp_file_path.display()
             ));
@@ -440,9 +440,9 @@ impl VideoTask {
         // 重命名临时文件
         if mp4_path.exists() {
             std::fs::remove_file(&mp4_path)
-                .context(format!("删除已存在的视频文件`{}`失败", mp4_path.display()))?;
+                .wrap_err(format!("删除已存在的视频文件`{}`失败", mp4_path.display()))?;
         }
-        std::fs::rename(&temp_file_path, &mp4_path).context(format!(
+        std::fs::rename(&temp_file_path, &mp4_path).wrap_err(format!(
             "将临时文件`{}`重命名为`{}`失败",
             temp_file_path.display(),
             mp4_path.display()

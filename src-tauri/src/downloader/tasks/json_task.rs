@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Context;
+use eyre::WrapErr;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -31,7 +31,7 @@ impl JsonTask {
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
         episode_info: &mut Option<EpisodeInfo>,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
 
         let episode_info = episode_info
@@ -41,17 +41,17 @@ impl JsonTask {
         let json_path = episode_dir.join(format!("{filename}-元数据.json"));
         let json_string = match episode_info {
             EpisodeInfo::Normal(info) => {
-                serde_json::to_string(&info).context("将普通视频信息转换为JSON失败")?
+                serde_json::to_string(&info).wrap_err("将普通视频信息转换为JSON失败")?
             }
             EpisodeInfo::Bangumi(info, _ep_id) => {
-                serde_json::to_string(&info).context("将番剧信息转换为JSON失败")?
+                serde_json::to_string(&info).wrap_err("将番剧信息转换为JSON失败")?
             }
             EpisodeInfo::Cheese(info, _ep_id) => {
-                serde_json::to_string(&info).context("将课程信息转换为JSON失败")?
+                serde_json::to_string(&info).wrap_err("将课程信息转换为JSON失败")?
             }
         };
         std::fs::write(&json_path, json_string)
-            .context(format!("保存JSON到`{}`失败", json_path.display()))?;
+            .wrap_err(format!("保存JSON到`{}`失败", json_path.display()))?;
 
         download_task.update_progress(|p| p.json_task.completed = true);
 

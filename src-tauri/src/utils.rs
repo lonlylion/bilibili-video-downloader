@@ -4,8 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, anyhow};
 use byteorder::{BigEndian, ReadBytesExt};
+use eyre::{OptionExt, WrapErr, eyre};
 
 use crate::{
     danmaku_xml_to_ass::{DamakuXmlDTag, DanmakuXmlITag},
@@ -48,11 +48,11 @@ impl From<u32> for BoxSizeField {
     }
 }
 
-pub fn is_mp4_complete(file_path: &Path) -> anyhow::Result<bool> {
-    let file = File::open(file_path).context(format!("打开文件`{}`失败", file_path.display()))?;
+pub fn is_mp4_complete(file_path: &Path) -> eyre::Result<bool> {
+    let file = File::open(file_path).wrap_err(format!("打开文件`{}`失败", file_path.display()))?;
     let real_size = file
         .metadata()
-        .context(format!("获取文件`{}`元数据失败", file_path.display()))?
+        .wrap_err(format!("获取文件`{}`元数据失败", file_path.display()))?
         .len();
     let mut reader = BufReader::new(file);
     let mut total_size: u64 = 0;
@@ -65,7 +65,7 @@ pub fn is_mp4_complete(file_path: &Path) -> anyhow::Result<bool> {
         let box_size_field: BoxSizeField = match reader.read_u32::<BigEndian>() {
             Ok(s) => s.into(),
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break, // 正常结束
-            Err(e) => return Err(anyhow!(e)),
+            Err(e) => return Err(eyre!(e)),
         };
         // 读取Box类型字段
         let mut box_type_bytes = [0u8; 4];
@@ -74,7 +74,7 @@ pub fn is_mp4_complete(file_path: &Path) -> anyhow::Result<bool> {
             if e.kind() == std::io::ErrorKind::UnexpectedEof {
                 return Ok(false);
             }
-            return Err(anyhow!(e));
+            return Err(eyre!(e));
         }
         // 如果是第一个Box，检查是否是 'ftyp' Box
         if is_first_box {
@@ -131,11 +131,11 @@ pub fn is_mp4_complete(file_path: &Path) -> anyhow::Result<bool> {
 }
 
 pub trait ToXml {
-    fn to_xml(&self, cid: i64) -> anyhow::Result<String>;
+    fn to_xml(&self, cid: i64) -> eyre::Result<String>;
 }
 
 impl ToXml for Vec<DmSegMobileReply> {
-    fn to_xml(&self, cid: i64) -> anyhow::Result<String> {
+    fn to_xml(&self, cid: i64) -> eyre::Result<String> {
         let elems = self
             .iter()
             .flat_map(|reply| &reply.elems)
@@ -157,7 +157,7 @@ impl ToXml for Vec<DmSegMobileReply> {
 
         let i_tag = DanmakuXmlITag { chatid: cid, elems };
 
-        let xml = yaserde::ser::to_string(&i_tag).map_err(|e| anyhow!(e))?;
+        let xml = yaserde::ser::to_string(&i_tag).map_err(|e| eyre!(e))?;
 
         Ok(xml)
     }
@@ -177,11 +177,11 @@ pub fn seconds_to_srt_time(seconds: f64) -> String {
     format!("{h:02}:{m:02}:{s:02},{ms:03}")
 }
 
-pub fn get_ffmpeg_program() -> anyhow::Result<PathBuf> {
+pub fn get_ffmpeg_program() -> eyre::Result<PathBuf> {
     let ffmpeg_program = std::env::current_exe()
-        .context("获取当前可执行文件路径失败")?
+        .wrap_err("获取当前可执行文件路径失败")?
         .parent()
-        .context("获取当前可执行文件所在目录失败")?
+        .ok_or_eyre("获取当前可执行文件所在目录失败")?
         .join("com.lanyeeee.bilibili-video-downloader-ffmpeg");
 
     Ok(ffmpeg_program)

@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use anyhow::Context;
+use eyre::WrapErr;
 use parking_lot::RwLock;
 use tauri::AppHandle;
 use tauri_specta::Event;
@@ -11,7 +11,7 @@ use tokio::{
 
 use crate::{
     events::DownloadEvent,
-    extensions::{AnyhowErrorToStringChain, AppHandleExt},
+    extensions::{AppHandleExt, EyreToStringChain},
     types::create_download_task_params::CreateDownloadTaskParams,
 };
 
@@ -234,7 +234,7 @@ impl DownloadTask {
         if let Err(err) = progress
             .process(self)
             .await
-            .context("[继续]失败的任务可以断点续传")
+            .wrap_err("[继续]失败的任务可以断点续传")
         {
             let err_title = format!("{ids_string} `{episode_title}`下载失败");
             let string_chain = err.to_string_chain();
@@ -283,7 +283,7 @@ impl DownloadTask {
                 .task_sem
                 .acquire()
                 .await
-                .map_err(anyhow::Error::from)
+                .map_err(eyre::Report::from)
             {
                 Ok(permit) => Some(permit),
                 Err(err) => {
@@ -306,7 +306,7 @@ impl DownloadTask {
         if let Err(err) = self
             .state_sender
             .send(DownloadTaskState::Downloading)
-            .map_err(anyhow::Error::from)
+            .map_err(eyre::Report::from)
         {
             let err_title = format!("{ids_string} `{episode_title}`发送状态`Downloading`失败");
             let string_chain = err.to_string_chain();
@@ -350,7 +350,7 @@ impl DownloadTask {
             (progress.episode_title.clone(), progress.get_ids_string())
         };
 
-        if let Err(err) = self.state_sender.send(state).map_err(anyhow::Error::from) {
+        if let Err(err) = self.state_sender.send(state).map_err(eyre::Report::from) {
             let err_title = format!("{ids_string} `{episode_title}`发送状态`{state:?}`失败");
             let string_chain = err.to_string_chain();
             tracing::error!(err_title, message = string_chain);

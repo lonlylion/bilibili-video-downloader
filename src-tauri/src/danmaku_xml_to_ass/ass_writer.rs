@@ -1,4 +1,4 @@
-use anyhow::Result;
+use eyre::Result;
 use std::borrow::Cow;
 use std::fmt;
 use std::io::{BufWriter, Write};

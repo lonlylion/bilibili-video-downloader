@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use anyhow::{Context, anyhow};
+use eyre::{WrapErr, eyre};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
@@ -43,21 +43,21 @@ impl VideoProcessTask {
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
         player_info: &mut Option<PlayerInfo>,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let embed_selected = self.embed_chapter_selected || self.embed_skip_selected;
 
         if self.merge_selected && embed_selected {
             self.merge_and_embed(download_task, progress, player_info)
                 .await
-                .context("自动合并+嵌入章节元数据失败")?;
+                .wrap_err("自动合并+嵌入章节元数据失败")?;
         } else if self.merge_selected {
             self.merge(download_task, progress)
                 .await
-                .context("自动合并失败")?;
+                .wrap_err("自动合并失败")?;
         } else if embed_selected {
             self.embed(download_task, progress, player_info)
                 .await
-                .context("嵌入章节元数据失败")?;
+                .wrap_err("嵌入章节元数据失败")?;
         }
 
         Ok(())
@@ -68,10 +68,10 @@ impl VideoProcessTask {
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
         player_info: &mut Option<PlayerInfo>,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
 
-        let ffmpeg_program = utils::get_ffmpeg_program().context("获取FFmpeg程序路径失败")?;
+        let ffmpeg_program = utils::get_ffmpeg_program().wrap_err("获取FFmpeg程序路径失败")?;
 
         let video_path = episode_dir.join(format!("{filename}.mp4"));
         if !video_path.exists() {
@@ -84,14 +84,14 @@ impl VideoProcessTask {
             // 如果音频文件不存在，则只嵌入章节元数据
             self.embed(download_task, progress, player_info)
                 .await
-                .context("嵌入章节元数据失败")?;
+                .wrap_err("嵌入章节元数据失败")?;
             return Ok(());
         }
 
         let metadata_path = self
             .create_chapter_metadata(&download_task.app, progress, player_info)
             .await
-            .context("创建章节元数据失败")?;
+            .wrap_err("创建章节元数据失败")?;
 
         let output_path = episode_dir.join(format!("{filename}-merged.mp4"));
 
@@ -134,24 +134,24 @@ impl VideoProcessTask {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            let err = anyhow!(format!("STDOUT: {stdout}"))
-                .context(format!("STDERR: {stderr}"))
-                .context("原因可能是视频或音频文件损坏，建议[重来]试试");
+            let err = eyre!(format!("STDOUT: {stdout}"))
+                .wrap_err(format!("STDERR: {stderr}"))
+                .wrap_err("原因可能是视频或音频文件损坏，建议[重来]试试");
             return Err(err);
         }
 
         std::fs::remove_file(&video_path)
-            .context(format!("删除视频文件`{}`失败", video_path.display()))?;
+            .wrap_err(format!("删除视频文件`{}`失败", video_path.display()))?;
         std::fs::remove_file(&audio_path)
-            .context(format!("删除音频文件`{}`失败", audio_path.display()))?;
-        std::fs::rename(&output_path, &video_path).context(format!(
+            .wrap_err(format!("删除音频文件`{}`失败", audio_path.display()))?;
+        std::fs::rename(&output_path, &video_path).wrap_err(format!(
             "将`{}`重命名为`{}`失败",
             output_path.display(),
             video_path.display()
         ))?;
 
         if let Some(metadata_path) = metadata_path {
-            std::fs::remove_file(&metadata_path).context(format!(
+            std::fs::remove_file(&metadata_path).wrap_err(format!(
                 "删除章节元数据文件`{}`失败",
                 metadata_path.display()
             ))?;
@@ -166,7 +166,7 @@ impl VideoProcessTask {
         &self,
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
 
         let video_path = episode_dir.join(format!("{filename}.mp4"));
@@ -183,7 +183,7 @@ impl VideoProcessTask {
 
         let output_path = episode_dir.join(format!("{filename}-merged.mp4"));
 
-        let ffmpeg_program = utils::get_ffmpeg_program().context("获取FFmpeg程序路径失败")?;
+        let ffmpeg_program = utils::get_ffmpeg_program().wrap_err("获取FFmpeg程序路径失败")?;
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         let video_path_clone = video_path.clone();
@@ -219,17 +219,17 @@ impl VideoProcessTask {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            let err = anyhow!(format!("STDOUT: {stdout}"))
-                .context(format!("STDERR: {stderr}"))
-                .context("原因可能是视频或音频文件损坏，建议[重来]试试");
+            let err = eyre!(format!("STDOUT: {stdout}"))
+                .wrap_err(format!("STDERR: {stderr}"))
+                .wrap_err("原因可能是视频或音频文件损坏，建议[重来]试试");
             return Err(err);
         }
 
         std::fs::remove_file(&video_path)
-            .context(format!("删除视频文件`{}`失败", video_path.display()))?;
+            .wrap_err(format!("删除视频文件`{}`失败", video_path.display()))?;
         std::fs::remove_file(&audio_path)
-            .context(format!("删除音频文件`{}`失败", audio_path.display()))?;
-        std::fs::rename(&output_path, &video_path).context(format!(
+            .wrap_err(format!("删除音频文件`{}`失败", audio_path.display()))?;
+        std::fs::rename(&output_path, &video_path).wrap_err(format!(
             "将`{}`重命名为`{}`失败",
             output_path.display(),
             video_path.display()
@@ -245,10 +245,10 @@ impl VideoProcessTask {
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
         player_info: &mut Option<PlayerInfo>,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
 
-        let ffmpeg_program = utils::get_ffmpeg_program().context("获取FFmpeg程序路径失败")?;
+        let ffmpeg_program = utils::get_ffmpeg_program().wrap_err("获取FFmpeg程序路径失败")?;
 
         let video_path = episode_dir.join(format!("{filename}.mp4"));
         if !video_path.exists() {
@@ -261,7 +261,7 @@ impl VideoProcessTask {
         let metadata_path = self
             .create_chapter_metadata(&download_task.app, progress, player_info)
             .await
-            .context("创建章节元数据失败")?;
+            .wrap_err("创建章节元数据失败")?;
 
         let Some(metadata_path) = metadata_path else {
             download_task.update_progress(|p| p.video_process_task.completed = true);
@@ -301,20 +301,20 @@ impl VideoProcessTask {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            let err = anyhow!(format!("STDOUT: {stdout}"))
-                .context(format!("STDERR: {stderr}"))
-                .context("原因可能是视频或音频文件损坏，建议[重来]试试");
+            let err = eyre!(format!("STDOUT: {stdout}"))
+                .wrap_err(format!("STDERR: {stderr}"))
+                .wrap_err("原因可能是视频或音频文件损坏，建议[重来]试试");
             return Err(err);
         }
 
         std::fs::remove_file(&video_path)
-            .context(format!("删除视频文件`{}`失败", video_path.display()))?;
-        std::fs::rename(&output_path, &video_path).context(format!(
+            .wrap_err(format!("删除视频文件`{}`失败", video_path.display()))?;
+        std::fs::rename(&output_path, &video_path).wrap_err(format!(
             "将`{}`重命名为`{}`失败",
             output_path.display(),
             video_path.display()
         ))?;
-        std::fs::remove_file(&metadata_path).context(format!(
+        std::fs::remove_file(&metadata_path).wrap_err(format!(
             "删除章节元数据文件`{}`失败",
             metadata_path.display()
         ))?;
@@ -329,7 +329,7 @@ impl VideoProcessTask {
         app: &AppHandle,
         progress: &DownloadProgress,
         player_info: &mut Option<PlayerInfo>,
-    ) -> anyhow::Result<Option<PathBuf>> {
+    ) -> eyre::Result<Option<PathBuf>> {
         let mut chapter_segments = ChapterSegments {
             segments: Vec::new(),
         };
@@ -368,7 +368,7 @@ impl VideoProcessTask {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
         let metadata_path = episode_dir.join(format!("{filename}.FFMETA.ini"));
         std::fs::write(&metadata_path, metadata_content)
-            .context(format!("保存章节元数据到`{}`失败", metadata_path.display()))?;
+            .wrap_err(format!("保存章节元数据到`{}`失败", metadata_path.display()))?;
 
         Ok(Some(metadata_path))
     }

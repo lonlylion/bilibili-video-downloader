@@ -1,4 +1,4 @@
-use anyhow::Context;
+use eyre::WrapErr;
 use parking_lot::RwLock;
 use tauri::{AppHandle, Manager, State};
 
@@ -9,8 +9,8 @@ use crate::{
     types::player_info::PlayerInfo,
 };
 
-pub trait AnyhowErrorToStringChain {
-    /// 将 `anyhow::Error` 转换为chain格式  
+pub trait EyreToStringChain {
+    /// 将 `eyre::Report` 转换为chain格式  
     /// # Example  
     /// 0: error message\
     /// 1: error message\
@@ -18,7 +18,7 @@ pub trait AnyhowErrorToStringChain {
     fn to_string_chain(&self) -> String;
 }
 
-impl AnyhowErrorToStringChain for anyhow::Error {
+impl EyreToStringChain for eyre::Report {
     fn to_string_chain(&self) -> String {
         use std::fmt::Write;
         self.chain()
@@ -53,7 +53,7 @@ pub trait GetOrInitPlayerInfo {
         &'a mut self,
         app: &AppHandle,
         progress: &DownloadProgress,
-    ) -> anyhow::Result<&'a mut PlayerInfo>;
+    ) -> eyre::Result<&'a mut PlayerInfo>;
 }
 
 impl GetOrInitPlayerInfo for Option<PlayerInfo> {
@@ -61,7 +61,7 @@ impl GetOrInitPlayerInfo for Option<PlayerInfo> {
         &'a mut self,
         app: &AppHandle,
         progress: &DownloadProgress,
-    ) -> anyhow::Result<&'a mut PlayerInfo> {
+    ) -> eyre::Result<&'a mut PlayerInfo> {
         if let Some(info) = self {
             return Ok(info);
         }
@@ -70,7 +70,7 @@ impl GetOrInitPlayerInfo for Option<PlayerInfo> {
         let info = bili_client
             .get_player_info(progress.aid, progress.cid)
             .await
-            .context("获取播放器信息失败")?;
+            .wrap_err("获取播放器信息失败")?;
 
         Ok(self.insert(info))
     }

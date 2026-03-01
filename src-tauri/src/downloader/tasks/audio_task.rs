@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{Context, anyhow};
+use eyre::{WrapErr, eyre};
 use fs4::fs_std::FileExt;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,7 @@ use crate::{
         download_chunk_task::DownloadChunkTask, download_progress::DownloadProgress,
         download_task::DownloadTask, media_chunk::MediaChunk,
     },
-    extensions::{AnyhowErrorToStringChain, AppHandleExt},
+    extensions::{AppHandleExt, EyreToStringChain},
     types::{
         audio_quality::AudioQuality, bangumi_media_url::BangumiMediaUrl,
         cheese_media_url::CheeseMediaUrl, normal_media_url::NormalMediaUrl,
@@ -45,7 +45,7 @@ impl AudioTask {
         &mut self,
         app: &AppHandle,
         media_url: &NormalMediaUrl,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let mut join_set = JoinSet::new();
 
         if let Some(medias) = &media_url.dash.audio {
@@ -130,7 +130,7 @@ impl AudioTask {
         &mut self,
         app: &AppHandle,
         media_url: &BangumiMediaUrl,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let Some(dash) = &media_url.dash else {
             // 如果没有音频，则直接返回
             self.completed = true;
@@ -190,7 +190,7 @@ impl AudioTask {
         &mut self,
         app: &AppHandle,
         media_url: &CheeseMediaUrl,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let Some(dash) = &media_url.dash else {
             // 如果没有音频，则直接返回
             self.completed = true;
@@ -314,7 +314,7 @@ impl AudioTask {
         &self,
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
         let (audio_task, episode_title, ids_string) = {
             (
@@ -378,7 +378,7 @@ impl AudioTask {
             };
 
             join_set.spawn(async move {
-                download_chunk_task.process().await.context(format!(
+                download_chunk_task.process().await.wrap_err(format!(
                     "分片`{chunk_index}/{chunk_count}`下载失败({start}-{end})"
                 ))
             });
@@ -407,20 +407,20 @@ impl AudioTask {
             .iter()
             .all(|chunk| chunk.completed);
         if !download_completed {
-            return Err(anyhow!(
+            return Err(eyre!(
                 "音频文件`{}`有分片未下载完成，[继续]可以跳过已下载分片断点续传",
                 temp_file_path.display()
             ));
         }
 
-        let is_audio_file_complete = utils::is_mp4_complete(&temp_file_path).context(format!(
+        let is_audio_file_complete = utils::is_mp4_complete(&temp_file_path).wrap_err(format!(
             "检查音频文件`{}`是否完整失败",
             temp_file_path.display()
         ))?;
 
         if !is_audio_file_complete {
             download_task.update_progress(|p| p.audio_task.mark_uncompleted());
-            return Err(anyhow!(
+            return Err(eyre!(
                 "音频文件`{}`不完整，[继续]会重新下载所有分片",
                 temp_file_path.display()
             ));
@@ -429,9 +429,9 @@ impl AudioTask {
         // 重命名临时文件
         if m4a_path.exists() {
             std::fs::remove_file(&m4a_path)
-                .context(format!("删除已存在的音频文件`{}`失败", m4a_path.display()))?;
+                .wrap_err(format!("删除已存在的音频文件`{}`失败", m4a_path.display()))?;
         }
-        std::fs::rename(&temp_file_path, &m4a_path).context(format!(
+        std::fs::rename(&temp_file_path, &m4a_path).wrap_err(format!(
             "将临时文件`{}`重命名为`{}`失败",
             temp_file_path.display(),
             m4a_path.display()

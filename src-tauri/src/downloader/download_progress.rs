@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{Context, anyhow};
+use eyre::{OptionExt, WrapErr, eyre};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager};
@@ -76,7 +76,7 @@ impl DownloadProgress {
         info: &NormalInfo,
         aid: i64,
         cid: Option<i64>,
-    ) -> anyhow::Result<Vec<Self>> {
+    ) -> eyre::Result<Vec<Self>> {
         let config = app.get_config().read().clone();
 
         if let Some(ugc_season) = &info.ugc_season {
@@ -87,10 +87,10 @@ impl DownloadProgress {
     }
 
     #[allow(clippy::cast_possible_wrap)]
-    pub fn from_bangumi(app: &AppHandle, info: &BangumiInfo, ep_id: i64) -> anyhow::Result<Self> {
+    pub fn from_bangumi(app: &AppHandle, info: &BangumiInfo, ep_id: i64) -> eyre::Result<Self> {
         let (episode, episode_order) = info.get_episode_with_order(ep_id)?;
         let Some(duration) = episode.duration else {
-            return Err(anyhow!("找不到ep_id为`{ep_id}`的番剧的时长"));
+            return Err(eyre!("找不到ep_id为`{ep_id}`的番剧的时长"));
         };
         // 将毫秒转换为秒
         let duration = duration / 1000;
@@ -147,12 +147,12 @@ impl DownloadProgress {
         Ok(progress)
     }
 
-    pub fn from_cheese(app: &AppHandle, info: &CheeseInfo, ep_id: i64) -> anyhow::Result<Self> {
+    pub fn from_cheese(app: &AppHandle, info: &CheeseInfo, ep_id: i64) -> eyre::Result<Self> {
         let episode = info
             .episodes
             .iter()
             .find(|ep| ep.id == ep_id)
-            .context(format!("找不到ep_id为`{ep_id}`的课程"))?;
+            .ok_or_eyre(format!("找不到ep_id为`{ep_id}`的课程"))?;
 
         let config = app.get_config().read().clone();
 
@@ -196,7 +196,7 @@ impl DownloadProgress {
         Ok(progress)
     }
 
-    pub async fn process(&mut self, download_task: &Arc<DownloadTask>) -> anyhow::Result<()> {
+    pub async fn process(&mut self, download_task: &Arc<DownloadTask>) -> eyre::Result<()> {
         let ids_string = self.get_ids_string();
 
         let _ = DownloadEvent::ProgressPreparing {
@@ -206,14 +206,14 @@ impl DownloadProgress {
 
         self.prepare(&download_task.app)
             .await
-            .context("准备下载失败")?;
+            .wrap_err("准备下载失败")?;
 
         self.completed_ts = None; // 重置完成时间戳
         download_task.update_progress(|p| *p = self.clone());
 
         let (episode_dir, filename) = (&self.episode_dir, &self.filename);
 
-        std::fs::create_dir_all(episode_dir).context(format!(
+        std::fs::create_dir_all(episode_dir).wrap_err(format!(
             "{ids_string} 创建目录`{}`失败",
             episode_dir.display()
         ))?;
@@ -234,7 +234,7 @@ impl DownloadProgress {
             video_task
                 .process(download_task, self)
                 .await
-                .context(format!("{ids_string} `{filename}`下载视频文件失败"))?;
+                .wrap_err(format!("{ids_string} `{filename}`下载视频文件失败"))?;
             tracing::debug!("{ids_string} `{filename}`视频下载任务完成");
         }
 
@@ -242,7 +242,7 @@ impl DownloadProgress {
             audio_task
                 .process(download_task, self)
                 .await
-                .context(format!("{ids_string} `{filename}`下载音频文件失败"))?;
+                .wrap_err(format!("{ids_string} `{filename}`下载音频文件失败"))?;
             tracing::debug!("{ids_string} `{filename}`音频下载任务完成");
         }
 
@@ -259,7 +259,7 @@ impl DownloadProgress {
             video_process_task
                 .process(download_task, self, &mut player_info)
                 .await
-                .context(format!("{ids_string} `{filename}`视频处理失败"))?;
+                .wrap_err(format!("{ids_string} `{filename}`视频处理失败"))?;
             tracing::debug!("{ids_string} `{filename}`视频处理任务完成");
         }
 
@@ -267,7 +267,7 @@ impl DownloadProgress {
             danmaku_task
                 .process(download_task, self)
                 .await
-                .context(format!("{ids_string} `{filename}`下载弹幕失败"))?;
+                .wrap_err(format!("{ids_string} `{filename}`下载弹幕失败"))?;
             tracing::debug!("{ids_string} `{filename}`弹幕下载任务完成");
         }
 
@@ -275,7 +275,7 @@ impl DownloadProgress {
             subtitle_task
                 .process(download_task, self, &mut player_info)
                 .await
-                .context(format!("{ids_string} `{filename}`下载字幕失败"))?;
+                .wrap_err(format!("{ids_string} `{filename}`下载字幕失败"))?;
             tracing::debug!("{ids_string} `{filename}`字幕下载任务完成");
         }
 
@@ -283,7 +283,7 @@ impl DownloadProgress {
             cover_task
                 .process(download_task, self)
                 .await
-                .context(format!("{ids_string} `{filename}`下载封面失败"))?;
+                .wrap_err(format!("{ids_string} `{filename}`下载封面失败"))?;
             tracing::debug!("{ids_string} `{filename}`封面下载任务完成");
         }
 
@@ -291,7 +291,7 @@ impl DownloadProgress {
             nfo_task
                 .process(download_task, self, &mut episode_info)
                 .await
-                .context(format!("{ids_string} `{filename}`下载NFO失败"))?;
+                .wrap_err(format!("{ids_string} `{filename}`下载NFO失败"))?;
             tracing::debug!("{ids_string} `{filename}`NFO下载任务完成");
         }
 
@@ -299,7 +299,7 @@ impl DownloadProgress {
             json_task
                 .process(download_task, self, &mut episode_info)
                 .await
-                .context(format!("{ids_string} `{filename}`下载JSON元数据失败"))?;
+                .wrap_err(format!("{ids_string} `{filename}`下载JSON元数据失败"))?;
             tracing::debug!("{ids_string} `{filename}`JSON元数据下载任务完成");
         }
 
@@ -314,7 +314,7 @@ impl DownloadProgress {
         Ok(())
     }
 
-    async fn prepare(&mut self, app: &AppHandle) -> anyhow::Result<()> {
+    async fn prepare(&mut self, app: &AppHandle) -> eyre::Result<()> {
         let video_selected = self.video_task.selected;
         let video_completed = self.video_task.completed;
         let audio_selected = self.audio_task.selected;
@@ -323,7 +323,7 @@ impl DownloadProgress {
         if (!video_selected && !audio_selected) || (video_completed && audio_completed) {
             // 如果视频和音频都没有选中，或者都已经完成，则更新需要格式化的字段就返回
             self.update_fmt_fields(app)
-                .context("更新需要格式化的字段失败")?;
+                .wrap_err("更新需要格式化的字段失败")?;
             return Ok(());
         }
 
@@ -332,12 +332,12 @@ impl DownloadProgress {
         match self.episode_type {
             EpisodeType::Normal => {
                 let Some(bvid) = &self.bvid else {
-                    return Err(anyhow!("progress中的bvid为None，无法获取视频链接"));
+                    return Err(eyre!("progress中的bvid为None，无法获取视频链接"));
                 };
                 let media_url = bili_client
                     .get_normal_url(bvid, self.cid)
                     .await
-                    .context("获取视频链接失败")?;
+                    .wrap_err("获取视频链接失败")?;
 
                 self.is_preview = !media_url.durl.is_empty() && media_url.dash.video.is_empty();
 
@@ -355,7 +355,7 @@ impl DownloadProgress {
                 let media_url = bili_client
                     .get_bangumi_url(self.cid)
                     .await
-                    .context("获取番剧视频链接失败")?;
+                    .wrap_err("获取番剧视频链接失败")?;
 
                 self.is_preview = media_url.is_preview != 0;
 
@@ -371,12 +371,12 @@ impl DownloadProgress {
             }
             EpisodeType::Cheese => {
                 let Some(ep_id) = self.ep_id else {
-                    return Err(anyhow!("progress中的ep_id为None，无法获取课程视频链接"));
+                    return Err(eyre!("progress中的ep_id为None，无法获取课程视频链接"));
                 };
                 let media_url = bili_client
                     .get_cheese_url(ep_id)
                     .await
-                    .context("获取课程视频链接失败")?;
+                    .wrap_err("获取课程视频链接失败")?;
 
                 self.is_drm = media_url.is_drm;
                 self.is_preview = media_url.is_preview != 0;
@@ -394,12 +394,12 @@ impl DownloadProgress {
         }
 
         self.update_fmt_fields(app)
-            .context("更新需要格式化的字段失败")?;
+            .wrap_err("更新需要格式化的字段失败")?;
 
         Ok(())
     }
 
-    fn update_fmt_fields(&mut self, app: &AppHandle) -> anyhow::Result<()> {
+    fn update_fmt_fields(&mut self, app: &AppHandle) -> eyre::Result<()> {
         let fmt_params = self.create_fmt_params();
 
         let config = app.get_config().read().clone();
@@ -435,7 +435,7 @@ impl DownloadProgress {
         }
     }
 
-    pub fn save(&self, app: &AppHandle, allow_create: bool) -> anyhow::Result<()> {
+    pub fn save(&self, app: &AppHandle, allow_create: bool) -> eyre::Result<()> {
         let progress = self.clone();
         let file_name = format!("{}.json", progress.task_id);
 
@@ -490,7 +490,7 @@ fn create_normal_progresses_for_single(
     info: &NormalInfo,
     cid: Option<i64>,
     config: &Config,
-) -> anyhow::Result<Vec<DownloadProgress>> {
+) -> eyre::Result<Vec<DownloadProgress>> {
     let tasks = Tasks::new(config, &info.pic);
 
     let create_ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -498,7 +498,7 @@ fn create_normal_progresses_for_single(
     if let Some(cid) = cid {
         // 如果有cid，则说明是要下载单个分P
         let Some(page) = info.pages.iter().find(|p| p.cid == cid) else {
-            return Err(anyhow!("找不到cid为`{cid}`的分P"));
+            return Err(eyre!("找不到cid为`{cid}`的分P"));
         };
         let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),
@@ -621,12 +621,12 @@ fn create_normal_progresses_for_season(
     aid: i64,
     cid: Option<i64>,
     config: &Config,
-) -> anyhow::Result<Vec<DownloadProgress>> {
+) -> eyre::Result<Vec<DownloadProgress>> {
     let section_index = ugc_season
         .sections
         .iter()
         .position(|s| s.episodes.iter().any(|e| e.aid == aid))
-        .context(format!("找不到含有aid为`{aid}`的ep的section"))?;
+        .ok_or_eyre(format!("找不到含有aid为`{aid}`的ep的section"))?;
     let section = &ugc_season.sections[section_index];
     #[allow(clippy::cast_possible_wrap)]
     let (ep, episode_order) = section
@@ -635,7 +635,7 @@ fn create_normal_progresses_for_season(
         .enumerate()
         .map(|(i, e)| (e, i as i64 + 1))
         .find(|(e, _)| e.aid == aid)
-        .context(format!("在section中找不到aid为`{aid}`的ep"))?;
+        .ok_or_eyre(format!("在section中找不到aid为`{aid}`的ep"))?;
 
     let tasks = Tasks::new(config, &ep.arc.pic);
 
@@ -644,7 +644,7 @@ fn create_normal_progresses_for_season(
     if let Some(cid) = cid {
         // 如果有cid，则说明是要下载单个分P
         let Some(page) = ep.pages.iter().find(|p| p.cid == cid) else {
-            return Err(anyhow!("找不到cid为`{cid}`的分P"));
+            return Err(eyre!("找不到cid为`{cid}`的分P"));
         };
         let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),

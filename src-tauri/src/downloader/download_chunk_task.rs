@@ -23,7 +23,7 @@ pub struct DownloadChunkTask {
 }
 
 impl DownloadChunkTask {
-    pub async fn process(self) -> anyhow::Result<usize> {
+    pub async fn process(self) -> eyre::Result<usize> {
         let download_chunk_task = self.download_chunk();
         tokio::pin!(download_chunk_task);
 
@@ -64,7 +64,7 @@ impl DownloadChunkTask {
         }
     }
 
-    async fn download_chunk(&self) -> anyhow::Result<usize> {
+    async fn download_chunk(&self) -> eyre::Result<usize> {
         let bili_client = self.download_task.app.get_bili_client();
         let chunk_data = bili_client
             .get_media_chunk(&self.url, self.start, self.end)
@@ -97,7 +97,7 @@ impl DownloadChunkTask {
     async fn acquire_chunk_permit<'a>(
         &'a self,
         permit: &mut Option<SemaphorePermit<'a>>,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         *permit = match permit.take() {
             // 如果有permit，则直接用
             Some(permit) => Some(permit),

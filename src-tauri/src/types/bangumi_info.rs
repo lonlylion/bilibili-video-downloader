@@ -1,4 +1,4 @@
-use anyhow::{Context, anyhow};
+use eyre::{OptionExt, eyre};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -55,7 +55,7 @@ pub struct BangumiInfo {
 
 impl BangumiInfo {
     #[allow(clippy::cast_possible_wrap)]
-    pub fn get_episode_with_order(&self, ep_id: i64) -> anyhow::Result<(&EpInBangumi, i64)> {
+    pub fn get_episode_with_order(&self, ep_id: i64) -> eyre::Result<(&EpInBangumi, i64)> {
         let episode_with_order = self
             .episodes
             .iter()
@@ -69,19 +69,19 @@ impl BangumiInfo {
         } else {
             // 如果在正片中没有找到对应的ep_id，则在section中查找
             let Some(sections) = &self.section else {
-                return Err(anyhow!("找不到对应的ep_id为`{ep_id}`的番剧"));
+                return Err(eyre!("找不到对应的ep_id为`{ep_id}`的番剧"));
             };
             let section_index = sections
                 .iter()
                 .position(|s| s.episodes.iter().any(|e| e.id == ep_id))
-                .context(format!("找不到含有ep_id为`{ep_id}`的ep的section"))?;
+                .ok_or_eyre(format!("找不到含有ep_id为`{ep_id}`的ep的section"))?;
             sections[section_index]
                 .episodes
                 .iter()
                 .enumerate()
                 .map(|(i, e)| (e, i as i64 + 1))
                 .find(|(e, _)| e.id == ep_id)
-                .context(format!("在section中找不到ep_id为`{ep_id}`的ep"))?
+                .ok_or_eyre(format!("在section中找不到ep_id为`{ep_id}`的ep"))?
         };
 
         Ok(episode_with_order)

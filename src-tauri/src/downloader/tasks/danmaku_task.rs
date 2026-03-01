@@ -1,6 +1,6 @@
 use std::{fs::File, sync::Arc};
 
-use anyhow::Context;
+use eyre::WrapErr;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -37,7 +37,7 @@ impl DanmakuTask {
         &self,
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let danmaku_task = &progress.danmaku_task;
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
         let ids_string = progress.get_ids_string();
@@ -66,29 +66,29 @@ impl DanmakuTask {
         let replies = bili_client
             .get_danmaku(progress.aid, progress.cid, progress.duration)
             .await
-            .context("获取弹幕失败")?;
+            .wrap_err("获取弹幕失败")?;
 
         let xml = replies
             .to_xml(progress.cid)
-            .context("将弹幕转换为XML失败")?;
+            .wrap_err("将弹幕转换为XML失败")?;
 
         if danmaku_task.xml_selected {
             std::fs::write(&xml_path, &xml)
-                .context(format!("保存弹幕XML到`{}`失败", xml_path.display()))?;
+                .wrap_err(format!("保存弹幕XML到`{}`失败", xml_path.display()))?;
         }
 
         if danmaku_task.ass_selected {
             let config = download_task.app.get_config().read().danmaku_config.clone();
             let ass_file = File::create(&ass_path)
-                .context(format!("创建弹幕ASS文件`{}`失败", ass_path.display()))?;
+                .wrap_err(format!("创建弹幕ASS文件`{}`失败", ass_path.display()))?;
             let title = filename.clone();
-            xml_to_ass(&xml, ass_file, title, config).context("将弹幕XML转换为ASS失败")?;
+            xml_to_ass(&xml, ass_file, title, config).wrap_err("将弹幕XML转换为ASS失败")?;
         }
 
         if danmaku_task.json_selected {
-            let json_string = serde_json::to_string(&replies).context("将弹幕转换为JSON失败")?;
+            let json_string = serde_json::to_string(&replies).wrap_err("将弹幕转换为JSON失败")?;
             std::fs::write(&json_path, json_string)
-                .context(format!("保存弹幕JSON到`{}`失败", json_path.display()))?;
+                .wrap_err(format!("保存弹幕JSON到`{}`失败", json_path.display()))?;
         }
 
         download_task.update_progress(|p| p.danmaku_task.completed = true);

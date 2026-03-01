@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use anyhow::Context;
+use eyre::{OptionExt, WrapErr};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -36,18 +36,15 @@ pub struct FmtParams {
 }
 
 impl FmtParams {
-    pub fn get_episode_dir_and_filename(
-        &self,
-        config: &Config,
-    ) -> anyhow::Result<(PathBuf, String)> {
+    pub fn get_episode_dir_and_filename(&self, config: &Config) -> eyre::Result<(PathBuf, String)> {
         use strfmt::strfmt;
 
         let mut json_value =
-            serde_json::to_value(self).context("将FmtParams转为serde_json::Value失败")?;
+            serde_json::to_value(self).wrap_err("将FmtParams转为serde_json::Value失败")?;
 
         let json_map = json_value
             .as_object_mut()
-            .context("FmtParams不是JSON对象")?;
+            .ok_or_eyre("FmtParams不是JSON对象")?;
         // 格式化时间字段
         format_time_fields(json_map, &config.time_fmt);
 
@@ -74,7 +71,7 @@ impl FmtParams {
         let dir_fmt_parts: Vec<&str> = dir_fmt.split('/').collect();
         let mut dir_names = Vec::new();
         for fmt in dir_fmt_parts {
-            let dir_name = strfmt(fmt, &vars).context("格式化目录名失败")?;
+            let dir_name = strfmt(fmt, &vars).wrap_err("格式化目录名失败")?;
             let dir_name = filename_filter(&dir_name);
             if !dir_name.is_empty() {
                 dir_names.push(dir_name);
@@ -82,7 +79,7 @@ impl FmtParams {
         }
 
         // 最后一部分是文件名
-        let filename = dir_names.pop().context("没有找到文件名部分")?;
+        let filename = dir_names.pop().ok_or_eyre("没有找到文件名部分")?;
         // 剩下的部分是目录名
         let mut episode_dir = config.download_dir.clone();
         for dir_name in dir_names {

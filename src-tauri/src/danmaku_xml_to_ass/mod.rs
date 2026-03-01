@@ -5,10 +5,10 @@ pub mod drawable;
 
 use std::{cmp::Ordering, fs::File};
 
-use anyhow::anyhow;
 use ass_writer::AssWriter;
 use canvas::CanvasConfig;
 use danmaku::{Danmaku, DanmakuType};
+use eyre::eyre;
 use yaserde::{YaDeserialize, YaSerialize};
 
 #[derive(YaSerialize, YaDeserialize)]
@@ -33,7 +33,7 @@ pub fn xml_to_ass(
     ass_file: File,
     title: String,
     config: CanvasConfig,
-) -> anyhow::Result<()> {
+) -> eyre::Result<()> {
     let mut writer = AssWriter::new(ass_file, title, config.clone())?;
     let mut canvas = config.canvas();
 
@@ -54,24 +54,24 @@ pub fn xml_to_ass(
 }
 
 trait ToDanmakuType {
-    fn to_danmaku_type(&self) -> anyhow::Result<DanmakuType>;
+    fn to_danmaku_type(&self) -> eyre::Result<DanmakuType>;
 }
 
 impl ToDanmakuType for u32 {
-    fn to_danmaku_type(&self) -> anyhow::Result<DanmakuType> {
+    fn to_danmaku_type(&self) -> eyre::Result<DanmakuType> {
         match self {
             1 => Ok(DanmakuType::Float),
             4 => Ok(DanmakuType::Bottom),
             5 => Ok(DanmakuType::Top),
             6 => Ok(DanmakuType::Reverse),
-            _ => Err(anyhow!("未知的弹幕类型：{self}")),
+            _ => Err(eyre!("未知的弹幕类型：{self}")),
         }
     }
 }
 
-pub fn xml_to_danmakus(xml: &str) -> anyhow::Result<Vec<Danmaku>> {
+pub fn xml_to_danmakus(xml: &str) -> eyre::Result<Vec<Danmaku>> {
     let xml = sanitize_xml(xml);
-    let i_tag: DanmakuXmlITag = yaserde::de::from_str(&xml).map_err(|e| anyhow!(e))?;
+    let i_tag: DanmakuXmlITag = yaserde::de::from_str(&xml).map_err(|e| eyre!(e))?;
 
     let mut danmakus = Vec::new();
 
@@ -83,7 +83,7 @@ pub fn xml_to_danmakus(xml: &str) -> anyhow::Result<Vec<Danmaku>> {
         let mut p_attr = elem.p.split(',');
 
         let Some(timeline_s) = p_attr.next().and_then(|s| s.parse::<f64>().ok()) else {
-            return Err(anyhow!("弹幕`{content}`的p属性中没有时间"));
+            return Err(eyre!("弹幕`{content}`的p属性中没有时间"));
         };
 
         let Some(r#type) = p_attr
@@ -91,15 +91,15 @@ pub fn xml_to_danmakus(xml: &str) -> anyhow::Result<Vec<Danmaku>> {
             .and_then(|s| s.parse::<u32>().ok())
             .and_then(|num| num.to_danmaku_type().ok())
         else {
-            return Err(anyhow!("弹幕`{content}`的p属性中没有弹幕类型"));
+            return Err(eyre!("弹幕`{content}`的p属性中没有弹幕类型"));
         };
 
         let Some(fontsize) = p_attr.next().and_then(|s| s.parse::<u32>().ok()) else {
-            return Err(anyhow!("弹幕`{content}`的p属性中没有字体大小"));
+            return Err(eyre!("弹幕`{content}`的p属性中没有字体大小"));
         };
 
         let Some(rgb) = p_attr.next().and_then(|s| s.parse::<u32>().ok()) else {
-            return Err(anyhow!("弹幕`{content}`的p属性中没有颜色"));
+            return Err(eyre!("弹幕`{content}`的p属性中没有颜色"));
         };
 
         // rgb 是个数字，类似 0x010203

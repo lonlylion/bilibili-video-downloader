@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Context;
+use eyre::WrapErr;
 use parking_lot::RwLock;
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
@@ -16,7 +16,7 @@ use tokio::sync::Semaphore;
 
 use crate::{
     events::DownloadEvent,
-    extensions::{AnyhowErrorToStringChain, AppHandleExt},
+    extensions::{AppHandleExt, EyreToStringChain},
     types::{
         create_download_task_params::CreateDownloadTaskParams,
         restart_download_task_params::RestartDownloadTaskParams,
@@ -59,10 +59,10 @@ impl DownloadManager {
         manager
     }
 
-    pub fn restore_download_tasks(&self) -> anyhow::Result<()> {
+    pub fn restore_download_tasks(&self) -> eyre::Result<()> {
         let task_dir = self.get_task_dir()?;
         std::fs::create_dir_all(&task_dir)
-            .context(format!("创建下载任务目录`{}`失败", task_dir.display()))?;
+            .wrap_err(format!("创建下载任务目录`{}`失败", task_dir.display()))?;
 
         let mut tasks = self.download_tasks.write();
         for entry in std::fs::read_dir(&task_dir)?.filter_map(Result::ok) {
@@ -150,9 +150,9 @@ impl DownloadManager {
                 continue;
             }
 
-            if let Err(err) = task.delete_sender.send(()).map_err(anyhow::Error::from) {
+            if let Err(err) = task.delete_sender.send(()).map_err(eyre::Report::from) {
                 let err_title = "删除下载任务失败";
-                let err = err.context(format!("通知ID为`{task_id}`的下载任务删除失败"));
+                let err = err.wrap_err(format!("通知ID为`{task_id}`的下载任务删除失败"));
                 let string_chain = err.to_string_chain();
                 tracing::error!(err_title, message = string_chain);
                 tasks.insert(task_id.clone(), task);
@@ -173,9 +173,9 @@ impl DownloadManager {
                 continue;
             };
 
-            if let Err(err) = task.restart_sender.send(()).map_err(anyhow::Error::from) {
+            if let Err(err) = task.restart_sender.send(()).map_err(eyre::Report::from) {
                 let err_title = "重来下载任务失败";
-                let err = err.context(format!("通知ID为`{task_id}`的下载任务重来失败"));
+                let err = err.wrap_err(format!("通知ID为`{task_id}`的下载任务重来失败"));
                 let string_chain = err.to_string_chain();
                 tracing::error!(err_title, message = string_chain);
                 continue;
@@ -217,9 +217,9 @@ impl DownloadManager {
             progress.audio_task.audio_quality = params.audio_quality;
         }
 
-        if let Err(err) = task.restart_sender.send(()).map_err(anyhow::Error::from) {
+        if let Err(err) = task.restart_sender.send(()).map_err(eyre::Report::from) {
             let err_title = "重来下载任务失败";
-            let err = err.context(format!("通知ID为`{task_id}`的下载任务重来失败"));
+            let err = err.wrap_err(format!("通知ID为`{task_id}`的下载任务重来失败"));
             let string_chain = err.to_string_chain();
             tracing::error!(err_title, message = string_chain);
             return;
@@ -241,13 +241,13 @@ impl DownloadManager {
         }
     }
 
-    fn get_task_dir(&self) -> anyhow::Result<PathBuf> {
+    fn get_task_dir(&self) -> eyre::Result<PathBuf> {
         let app_data_dir = self.app.path().app_data_dir()?;
         let task_dir = app_data_dir.join(".下载任务");
         Ok(task_dir)
     }
 
-    fn delete_progress_file(&self, task_id: &str) -> anyhow::Result<()> {
+    fn delete_progress_file(&self, task_id: &str) -> eyre::Result<()> {
         let task_dir = self.get_task_dir()?;
         let task_file = task_dir.join(format!("{task_id}.json"));
         if task_file.exists() {
