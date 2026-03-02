@@ -16,7 +16,7 @@ use tokio::sync::Semaphore;
 
 use crate::{
     events::DownloadEvent,
-    extensions::{AppHandleExt, EyreToStringChain},
+    extensions::{AppHandleExt, EyreReportToMessage},
     types::{
         create_download_task_params::CreateDownloadTaskParams,
         restart_download_task_params::RestartDownloadTaskParams,
@@ -109,8 +109,8 @@ impl DownloadManager {
         for task_id in task_ids {
             let Some(task) = tasks.get(task_id) else {
                 let err_title = "暂停下载任务失败";
-                let err_msg = format!("未找到ID为`{task_id}`的下载任务");
-                tracing::error!(err_title, message = err_msg);
+                let message = format!("未找到ID为`{task_id}`的下载任务");
+                tracing::error!(err_title, message);
                 continue;
             };
             task.set_state(DownloadTaskState::Paused);
@@ -123,8 +123,8 @@ impl DownloadManager {
         for task_id in task_ids {
             let Some(task) = tasks.get(task_id) else {
                 let err_title = "继续下载任务失败";
-                let err_msg = format!("未找到ID为`{task_id}`的下载任务");
-                tracing::error!(err_title, message = err_msg);
+                let message = format!("未找到ID为`{task_id}`的下载任务");
+                tracing::error!(err_title, message);
                 continue;
             };
             task.set_state(DownloadTaskState::Pending);
@@ -137,15 +137,15 @@ impl DownloadManager {
         for task_id in task_ids {
             let Some(task) = tasks.remove(task_id) else {
                 let err_title = "删除下载任务失败";
-                let err_msg = format!("未找到ID为`{task_id}`的下载任务");
-                tracing::error!(err_title, message = err_msg);
+                let message = format!("未找到ID为`{task_id}`的下载任务");
+                tracing::error!(err_title, message);
                 continue;
             };
 
             if let Err(err) = self.delete_progress_file(task_id) {
                 let err_title = "删除下载任务失败";
-                let err_msg = format!("删除ID为`{task_id}`的下载任务文件失败: {err}");
-                tracing::error!(err_title, message = err_msg);
+                let message = format!("删除ID为`{task_id}`的下载任务文件失败: {err}");
+                tracing::error!(err_title, message);
                 tasks.insert(task_id.clone(), task);
                 continue;
             }
@@ -153,8 +153,8 @@ impl DownloadManager {
             if let Err(err) = task.delete_sender.send(()).map_err(eyre::Report::from) {
                 let err_title = "删除下载任务失败";
                 let err = err.wrap_err(format!("通知ID为`{task_id}`的下载任务删除失败"));
-                let string_chain = err.to_string_chain();
-                tracing::error!(err_title, message = string_chain);
+                let message = err.to_message();
+                tracing::error!(err_title, message);
                 tasks.insert(task_id.clone(), task);
                 continue;
             }
@@ -168,16 +168,16 @@ impl DownloadManager {
         for task_id in task_ids {
             let Some(task) = tasks.get(task_id) else {
                 let err_title = "重来下载任务失败";
-                let err_msg = format!("未找到ID为`{task_id}`的下载任务");
-                tracing::error!(err_title, message = err_msg);
+                let message = format!("未找到ID为`{task_id}`的下载任务");
+                tracing::error!(err_title, message);
                 continue;
             };
 
             if let Err(err) = task.restart_sender.send(()).map_err(eyre::Report::from) {
                 let err_title = "重来下载任务失败";
                 let err = err.wrap_err(format!("通知ID为`{task_id}`的下载任务重来失败"));
-                let string_chain = err.to_string_chain();
-                tracing::error!(err_title, message = string_chain);
+                let message = err.to_message();
+                tracing::error!(err_title, message);
                 continue;
             }
 
@@ -191,8 +191,8 @@ impl DownloadManager {
         let tasks = self.download_tasks.read();
         let Some(task) = tasks.get(task_id) else {
             let err_title = "重来下载任务失败";
-            let err_msg = format!("未找到ID为`{task_id}`的下载任务");
-            tracing::error!(err_title, message = err_msg);
+            let message = format!("未找到ID为`{task_id}`的下载任务");
+            tracing::error!(err_title, message);
             return;
         };
 
@@ -220,8 +220,8 @@ impl DownloadManager {
         if let Err(err) = task.restart_sender.send(()).map_err(eyre::Report::from) {
             let err_title = "重来下载任务失败";
             let err = err.wrap_err(format!("通知ID为`{task_id}`的下载任务重来失败"));
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
+            let message = err.to_message();
+            tracing::error!(err_title, message);
             return;
         }
 

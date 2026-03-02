@@ -11,7 +11,7 @@ use tokio::{
 
 use crate::{
     events::DownloadEvent,
-    extensions::{AppHandleExt, EyreToStringChain},
+    extensions::{AppHandleExt, EyreReportToMessage},
     types::create_download_task_params::CreateDownloadTaskParams,
 };
 
@@ -42,8 +42,8 @@ impl DownloadTask {
                             let cid = cid.map_or("None".to_string(), |id| id.to_string());
                             let ids_string = format!("aid: {aid}, cid: {cid}");
                             let err_title = format!("{ids_string} 创建普通视频的下载进度失败");
-                            let string_chain = err.to_string_chain();
-                            tracing::error!(err_title, message = string_chain);
+                            let message = err.to_message();
+                            tracing::error!(err_title, message);
                             continue;
                         }
                     };
@@ -58,8 +58,8 @@ impl DownloadTask {
                         Err(err) => {
                             let ids_string = format!("ep_id: {ep_id}");
                             let err_title = format!("{ids_string} 创建番剧的下载进度失败");
-                            let string_chain = err.to_string_chain();
-                            tracing::error!(err_title, message = string_chain);
+                            let message = err.to_message();
+                            tracing::error!(err_title, message);
                             continue;
                         }
                     };
@@ -74,8 +74,8 @@ impl DownloadTask {
                         Err(err) => {
                             let ids_string = format!("ep_id: {ep_id}");
                             let err_title = format!("{ids_string} 创建课程的下载进度失败");
-                            let string_chain = err.to_string_chain();
-                            tracing::error!(err_title, message = string_chain);
+                            let message = err.to_message();
+                            tracing::error!(err_title, message);
                             continue;
                         }
                     };
@@ -91,8 +91,8 @@ impl DownloadTask {
                 let ids_string = progress.get_ids_string();
                 let episode_title = &progress.episode_title;
                 let err_title = format!("{ids_string} `{episode_title}`保存下载进度到文件失败");
-                let string_chain = err.to_string_chain();
-                tracing::error!(err_title, message = string_chain);
+                let message = err.to_message();
+                tracing::error!(err_title, message);
             }
 
             let auto_start = app.get_config().read().auto_start_download_task;
@@ -237,8 +237,8 @@ impl DownloadTask {
             .wrap_err("[继续]失败的任务可以断点续传")
         {
             let err_title = format!("{ids_string} `{episode_title}`下载失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
+            let message = err.to_message();
+            tracing::error!(err_title, message);
 
             self.set_state(DownloadTaskState::Failed);
 
@@ -289,8 +289,8 @@ impl DownloadTask {
                 Err(err) => {
                     let err_title =
                         format!("{ids_string} `{episode_title}`获取下载任务的permit失败");
-                    let string_chain = err.to_string_chain();
-                    tracing::error!(err_title, message = string_chain);
+                    let message = err.to_message();
+                    tracing::error!(err_title, message);
 
                     self.set_state(DownloadTaskState::Failed);
 
@@ -309,8 +309,8 @@ impl DownloadTask {
             .map_err(eyre::Report::from)
         {
             let err_title = format!("{ids_string} `{episode_title}`发送状态`Downloading`失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
+            let message = err.to_message();
+            tracing::error!(err_title, message);
 
             self.set_state(DownloadTaskState::Failed);
         }
@@ -352,8 +352,8 @@ impl DownloadTask {
 
         if let Err(err) = self.state_sender.send(state).map_err(eyre::Report::from) {
             let err_title = format!("{ids_string} `{episode_title}`发送状态`{state:?}`失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
+            let message = err.to_message();
+            tracing::error!(err_title, message);
         }
     }
 
@@ -374,8 +374,8 @@ impl DownloadTask {
             let ids_string = updated_progress.get_ids_string();
             let episode_title = &updated_progress.episode_title;
             let err_title = format!("{ids_string} `{episode_title}`保存下载进度到文件失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
+            let message = err.to_message();
+            tracing::error!(err_title, message);
         }
     }
 }

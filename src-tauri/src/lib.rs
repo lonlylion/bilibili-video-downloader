@@ -31,6 +31,7 @@ use tauri::{Manager, Wry};
 use crate::{
     bili_client::BiliClient,
     downloader::download_manager::DownloadManager,
+    errors::install_custom_eyre_handler,
     events::{DownloadEvent, LogEvent},
 };
 
@@ -41,6 +42,8 @@ fn generate_context() -> tauri::Context<Wry> {
 #[allow(clippy::missing_panics_doc)]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_custom_eyre_handler().unwrap();
+
     let builder = tauri_specta::Builder::<Wry>::new()
         .commands(tauri_specta::collect_commands![
             get_config,

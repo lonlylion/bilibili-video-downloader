@@ -18,7 +18,7 @@ use crate::{
         download_chunk_task::DownloadChunkTask, download_progress::DownloadProgress,
         download_task::DownloadTask, media_chunk::MediaChunk,
     },
-    extensions::{AppHandleExt, EyreToStringChain},
+    extensions::{AppHandleExt, EyreReportToMessage},
     types::{
         bangumi_media_url::BangumiMediaUrl, cheese_media_url::CheeseMediaUrl,
         codec_type::CodecType, normal_media_url::NormalMediaUrl, video_quality::VideoQuality,
@@ -404,8 +404,8 @@ impl VideoTask {
                 Ok(i) => download_task.update_progress(|p| p.video_task.chunks[i].completed = true),
                 Err(err) => {
                     let err_title = format!("{ids_string} `{episode_title}`视频的一个分片下载失败");
-                    let string_chain = err.to_string_chain();
-                    tracing::error!(err_title, message = string_chain);
+                    let message = err.to_message();
+                    tracing::error!(err_title, message);
                 }
             }
         }
