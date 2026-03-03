@@ -3,6 +3,7 @@ use std::{fs::File, sync::Arc};
 use eyre::WrapErr;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tracing::instrument;
 
 use crate::{
     config::FileExistAction,
@@ -33,6 +34,7 @@ impl DanmakuTask {
         !self.xml_selected && !self.ass_selected && !self.json_selected || self.completed
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn process(
         &self,
         download_task: &Arc<DownloadTask>,
@@ -40,7 +42,6 @@ impl DanmakuTask {
     ) -> eyre::Result<()> {
         let danmaku_task = &progress.danmaku_task;
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
-        let ids_string = progress.get_ids_string();
 
         let xml_path = episode_dir.join(format!("{filename}.弹幕.xml"));
         let ass_path = episode_dir.join(format!("{filename}.弹幕.ass"));
@@ -53,7 +54,7 @@ impl DanmakuTask {
             let skip_json = !danmaku_task.json_selected || json_path.exists();
 
             if skip_xml && skip_ass && skip_json {
-                tracing::debug!("{ids_string} `{filename}`弹幕文件已存在，跳过下载");
+                tracing::debug!("弹幕文件已存在，跳过下载");
                 download_task.update_progress(|p| {
                     p.danmaku_task.skipped = true;
                     p.danmaku_task.completed = true;

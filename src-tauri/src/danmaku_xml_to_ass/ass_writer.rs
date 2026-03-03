@@ -1,7 +1,8 @@
-use eyre::Result;
 use std::borrow::Cow;
 use std::fmt;
 use std::io::{BufWriter, Write};
+
+use tracing::instrument;
 
 use super::canvas::CanvasConfig;
 use super::drawable::{DrawEffect, Drawable};
@@ -99,7 +100,8 @@ pub struct AssWriter<W: Write> {
 }
 
 impl<W: Write> AssWriter<W> {
-    pub fn new(f: W, title: String, canvas_config: CanvasConfig) -> Result<Self> {
+    #[instrument(level = "error", skip_all)]
+    pub fn new(f: W, title: String, canvas_config: CanvasConfig) -> eyre::Result<Self> {
         let mut this = AssWriter {
             // 对于 HDD、docker 之类的场景，磁盘 IO 是非常大的瓶颈。使用大缓存
             f: BufWriter::with_capacity(10 << 20, f),
@@ -112,7 +114,8 @@ impl<W: Write> AssWriter<W> {
         Ok(this)
     }
 
-    pub fn init(&mut self) -> Result<()> {
+    #[instrument(level = "error", skip_all)]
+    pub fn init(&mut self) -> eyre::Result<()> {
         write!(
             self.f,
             "\
@@ -147,7 +150,8 @@ impl<W: Write> AssWriter<W> {
         Ok(())
     }
 
-    pub fn write(&mut self, drawable: Drawable) -> Result<()> {
+    #[instrument(level = "error", skip_all)]
+    pub fn write(&mut self, drawable: Drawable) -> eyre::Result<()> {
         writeln!(
             self.f,
             // Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

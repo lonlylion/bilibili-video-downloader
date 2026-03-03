@@ -3,6 +3,7 @@ use std::sync::Arc;
 use eyre::WrapErr;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tracing::instrument;
 
 use crate::downloader::{
     download_progress::DownloadProgress,
@@ -26,6 +27,7 @@ impl JsonTask {
         !self.selected || self.completed
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn process(
         &self,
         download_task: &Arc<DownloadTask>,

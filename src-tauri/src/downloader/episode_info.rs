@@ -1,5 +1,6 @@
 use eyre::{OptionExt, WrapErr};
 use tauri::AppHandle;
+use tracing::instrument;
 
 use crate::{
     downloader::{download_progress::DownloadProgress, episode_type::EpisodeType},
@@ -27,6 +28,7 @@ pub trait GetOrInitEpisodeInfo {
 }
 
 impl GetOrInitEpisodeInfo for Option<EpisodeInfo> {
+    #[instrument(level = "error", skip_all)]
     async fn get_or_init<'a>(
         &'a mut self,
         app: &AppHandle,

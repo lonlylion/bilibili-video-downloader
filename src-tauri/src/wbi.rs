@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use eyre::{OptionExt, WrapErr, eyre};
 use md5::{Digest, Md5};
 use serde::Deserialize;
+use tracing::instrument;
 
 use crate::bili_client::{BiliClient, BiliResp};
 
@@ -25,7 +26,8 @@ struct WeiRespData {
 
 impl BiliClient {
     // 为请求参数进行 wbi 签名
-    pub(crate) async fn wbi(&self, params: &mut Vec<(&str, String)>) -> eyre::Result<()> {
+    #[instrument(level = "error", skip_all)]
+    pub async fn wbi(&self, params: &mut Vec<(&str, String)>) -> eyre::Result<()> {
         let (img_key, sub_key) = self.get_wbi_keys().await.wrap_err("获取wbi keys失败")?;
         let mixin_key = get_mixin_key((img_key + &sub_key).as_bytes());
 
@@ -46,6 +48,7 @@ impl BiliClient {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn get_wbi_keys(&self) -> eyre::Result<(String, String)> {
         let request = self
             .api_client

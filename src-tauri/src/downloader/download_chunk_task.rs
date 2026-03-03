@@ -7,6 +7,7 @@ use std::{
 
 use parking_lot::Mutex;
 use tokio::{sync::SemaphorePermit, time::sleep};
+use tracing::instrument;
 
 use crate::{
     downloader::{download_task::DownloadTask, download_task_state::DownloadTaskState},
@@ -23,6 +24,16 @@ pub struct DownloadChunkTask {
 }
 
 impl DownloadChunkTask {
+    #[instrument(
+        level = "error",
+        skip_all,
+        fields(
+            url = self.url,
+            chunk_index = ?self.chunk_index,
+            start = self.start,
+            end = self.end,
+        )
+    )]
     pub async fn process(self) -> eyre::Result<usize> {
         let download_chunk_task = self.download_chunk();
         tokio::pin!(download_chunk_task);
@@ -64,6 +75,7 @@ impl DownloadChunkTask {
         }
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn download_chunk(&self) -> eyre::Result<usize> {
         let bili_client = self.download_task.app.get_bili_client();
         let chunk_data = bili_client
@@ -94,6 +106,7 @@ impl DownloadChunkTask {
         Ok(self.chunk_index)
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn acquire_chunk_permit<'a>(
         &'a self,
         permit: &mut Option<SemaphorePermit<'a>>,

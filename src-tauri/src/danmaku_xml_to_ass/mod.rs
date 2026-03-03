@@ -9,6 +9,7 @@ use ass_writer::AssWriter;
 use canvas::CanvasConfig;
 use danmaku::{Danmaku, DanmakuType};
 use eyre::eyre;
+use tracing::instrument;
 use yaserde::{YaDeserialize, YaSerialize};
 
 #[derive(YaSerialize, YaDeserialize)]
@@ -28,6 +29,7 @@ pub struct DanmakuXmlITag {
     pub elems: Vec<DamakuXmlDTag>,
 }
 
+#[instrument(level = "error", skip_all)]
 pub fn xml_to_ass(
     xml: &str,
     ass_file: File,
@@ -58,6 +60,7 @@ trait ToDanmakuType {
 }
 
 impl ToDanmakuType for u32 {
+    #[instrument(level = "error", skip_all)]
     fn to_danmaku_type(&self) -> eyre::Result<DanmakuType> {
         match self {
             1 => Ok(DanmakuType::Float),
@@ -69,6 +72,7 @@ impl ToDanmakuType for u32 {
     }
 }
 
+#[instrument(level = "error", skip_all)]
 pub fn xml_to_danmakus(xml: &str) -> eyre::Result<Vec<Danmaku>> {
     let xml = sanitize_xml(xml);
     let i_tag: DanmakuXmlITag = yaserde::de::from_str(&xml).map_err(|e| eyre!(e))?;

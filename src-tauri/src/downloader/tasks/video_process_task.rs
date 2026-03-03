@@ -4,6 +4,7 @@ use eyre::{WrapErr, eyre};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
+use tracing::instrument;
 
 use crate::{
     downloader::{
@@ -38,6 +39,7 @@ impl VideoProcessTask {
             || self.completed
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn process(
         &self,
         download_task: &Arc<DownloadTask>,
@@ -63,6 +65,7 @@ impl VideoProcessTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn merge_and_embed(
         &self,
         download_task: &Arc<DownloadTask>,
@@ -101,7 +104,10 @@ impl VideoProcessTask {
         let metadata_path_clone = metadata_path.clone();
         let output_path_clone = output_path.clone();
 
-        tokio::spawn(async move {
+        let current_span = tracing::Span::current();
+        tauri::async_runtime::spawn_blocking(move || {
+            let _enter = current_span.enter();
+
             let mut command = std::process::Command::new(ffmpeg_program);
 
             command.arg("-i").arg(video_path_clone);
@@ -162,6 +168,7 @@ impl VideoProcessTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn merge(
         &self,
         download_task: &Arc<DownloadTask>,
@@ -190,7 +197,10 @@ impl VideoProcessTask {
         let audio_path_clone = audio_path.clone();
         let output_path_clone = output_path.clone();
 
+        let current_span = tracing::Span::current();
         tauri::async_runtime::spawn_blocking(move || {
+            let _enter = current_span.enter();
+
             let mut command = std::process::Command::new(ffmpeg_program);
 
             command.arg("-i").arg(video_path_clone);
@@ -240,6 +250,7 @@ impl VideoProcessTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn embed(
         &self,
         download_task: &Arc<DownloadTask>,
@@ -273,7 +284,10 @@ impl VideoProcessTask {
         let metadata_path_clone = metadata_path.clone();
         let output_path_clone = output_path.clone();
 
+        let current_span = tracing::Span::current();
         tauri::async_runtime::spawn_blocking(move || {
+            let _enter = current_span.enter();
+
             let mut command = std::process::Command::new(ffmpeg_program);
 
             command.arg("-i").arg(video_path_clone);
@@ -324,6 +338,7 @@ impl VideoProcessTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn create_chapter_metadata(
         &self,
         app: &AppHandle,

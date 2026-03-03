@@ -4,6 +4,7 @@ use chrono::{DateTime, Datelike, NaiveDateTime};
 use eyre::{OptionExt, WrapErr, eyre};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tracing::instrument;
 use yaserde::{YaDeserialize, YaSerialize};
 
 use crate::{
@@ -37,6 +38,7 @@ impl NfoTask {
         !self.selected || self.completed
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn process(
         &self,
         download_task: &Arc<DownloadTask>,
@@ -64,6 +66,7 @@ impl NfoTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn process_normal(
         &self,
         download_task: &Arc<DownloadTask>,
@@ -71,12 +74,11 @@ impl NfoTask {
         info: &NormalInfo,
     ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
-        let ids_string = progress.get_ids_string();
         let nfo_path = episode_dir.join(format!("{filename}.nfo"));
 
         let file_exist_action = download_task.app.get_config().read().file_exist_action;
         if file_exist_action == FileExistAction::Skip && nfo_path.exists() {
-            tracing::debug!("{ids_string} `{filename}`NFO文件已存在，跳过下载");
+            tracing::debug!("NFO文件已存在，跳过下载");
             download_task.update_progress(|p| {
                 p.nfo_task.skipped = true;
                 p.nfo_task.completed = true;
@@ -114,6 +116,7 @@ impl NfoTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn process_bangumi(
         &self,
         download_task: &Arc<DownloadTask>,
@@ -122,12 +125,11 @@ impl NfoTask {
         ep_id: &i64,
     ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
-        let ids_string = progress.get_ids_string();
         let episode_details_nfo_path = episode_dir.join(format!("{filename}.nfo"));
 
         let file_exist_action = download_task.app.get_config().read().file_exist_action;
         if file_exist_action == FileExistAction::Skip && episode_details_nfo_path.exists() {
-            tracing::debug!("{ids_string} `{filename}`NFO文件已存在，跳过下载");
+            tracing::debug!("NFO文件已存在，跳过下载");
             download_task.update_progress(|p| {
                 p.nfo_task.skipped = true;
                 p.nfo_task.completed = true;
@@ -178,6 +180,7 @@ impl NfoTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn process_cheese(
         &self,
         download_task: &Arc<DownloadTask>,
@@ -186,12 +189,11 @@ impl NfoTask {
         ep_id: &i64,
     ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
-        let ids_string = progress.get_ids_string();
         let episode_details_nfo_path = episode_dir.join(format!("{filename}.nfo"));
 
         let file_exist_action = download_task.app.get_config().read().file_exist_action;
         if file_exist_action == FileExistAction::Skip && episode_details_nfo_path.exists() {
-            tracing::debug!("{ids_string} `{filename}`NFO文件已存在，跳过下载");
+            tracing::debug!("NFO文件已存在，跳过下载");
             download_task.update_progress(|p| {
                 p.nfo_task.skipped = true;
                 p.nfo_task.completed = true;
@@ -299,6 +301,7 @@ struct EpisodeDetails {
 }
 
 impl NormalInfo {
+    #[instrument(level = "error", skip_all)]
     pub fn to_movie_nfo(&self, tags: Tags) -> eyre::Result<String> {
         let genre = vec![
             "Bilibili视频".to_string(),
@@ -364,6 +367,7 @@ impl NormalInfo {
 }
 
 impl BangumiInfo {
+    #[instrument(level = "error", skip_all)]
     pub fn to_tvshow_nfo(&self) -> eyre::Result<String> {
         let time_str = &self.publish.pub_time;
         let date_time = NaiveDateTime::parse_from_str(time_str, "%Y-%m-%d %H:%M:%S").wrap_err(
@@ -399,6 +403,7 @@ impl BangumiInfo {
         Ok(nfo)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub fn to_episode_details_nfo(&self, ep_id: i64) -> eyre::Result<String> {
         let (episode, episode_order) = self.get_episode_with_order(ep_id)?;
 
@@ -489,6 +494,7 @@ impl BangumiInfo {
 }
 
 impl CheeseInfo {
+    #[instrument(level = "error", skip_all)]
     pub fn to_tvshow_nfo(&self) -> eyre::Result<String> {
         let episode = self.episodes.first().ok_or_eyre("episodes列表为空")?;
         let ts = episode.release_date;
@@ -525,12 +531,13 @@ impl CheeseInfo {
         Ok(nfo)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub fn to_episode_details_nfo(&self, ep_id: i64) -> eyre::Result<String> {
         let episode = self
             .episodes
             .iter()
             .find(|ep| ep.id == ep_id)
-            .ok_or_eyre(format!("找不到ep_id为`{ep_id}`的课程"))?;
+            .ok_or_eyre("找不到ep_id对应的课程")?;
 
         let ts = episode.release_date;
         let date_time = DateTime::from_timestamp(ts, 0)

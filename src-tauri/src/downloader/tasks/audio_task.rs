@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
 use tokio::task::JoinSet;
+use tracing::{Instrument, instrument};
 
 use crate::{
     config::FileExistAction,
@@ -41,11 +42,7 @@ pub struct AudioTask {
 }
 
 impl AudioTask {
-    pub async fn prepare_normal(
-        &mut self,
-        app: &AppHandle,
-        media_url: &NormalMediaUrl,
-    ) -> eyre::Result<()> {
+    pub async fn prepare_normal(&mut self, app: &AppHandle, media_url: &NormalMediaUrl) {
         let mut join_set = JoinSet::new();
 
         if let Some(medias) = &media_url.dash.audio {
@@ -57,7 +54,7 @@ impl AudioTask {
                 urls.extend_from_slice(&media.backup_url);
                 urls.push(media.base_url.clone());
 
-                join_set.spawn(async move {
+                let get_url_with_content_length_task = async move {
                     let bili_client = app.get_bili_client();
                     let url_with_content_length =
                         bili_client.get_url_with_content_length(urls).await;
@@ -65,7 +62,9 @@ impl AudioTask {
                         id,
                         url_with_content_length,
                     }
-                });
+                };
+
+                join_set.spawn(get_url_with_content_length_task.in_current_span());
             }
         }
 
@@ -78,7 +77,7 @@ impl AudioTask {
                 urls.extend_from_slice(&media.backup_url);
                 urls.push(media.base_url.clone());
 
-                join_set.spawn(async move {
+                let get_url_with_content_length_task = async move {
                     let bili_client = app.get_bili_client();
                     let url_with_content_length =
                         bili_client.get_url_with_content_length(urls).await;
@@ -86,7 +85,9 @@ impl AudioTask {
                         id,
                         url_with_content_length,
                     }
-                });
+                };
+
+                join_set.spawn(get_url_with_content_length_task.in_current_span());
             }
         }
 
@@ -99,14 +100,16 @@ impl AudioTask {
             urls.extend_from_slice(&media.backup_url);
             urls.push(media.base_url.clone());
 
-            join_set.spawn(async move {
+            let get_url_with_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let url_with_content_length = bili_client.get_url_with_content_length(urls).await;
                 MediaForPrepare {
                     id,
                     url_with_content_length,
                 }
-            });
+            };
+
+            join_set.spawn(get_url_with_content_length_task.in_current_span());
         }
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
@@ -122,31 +125,25 @@ impl AudioTask {
         }
 
         self.prepare(app, &medias);
-
-        Ok(())
     }
 
-    pub async fn prepare_bangumi(
-        &mut self,
-        app: &AppHandle,
-        media_url: &BangumiMediaUrl,
-    ) -> eyre::Result<()> {
+    pub async fn prepare_bangumi(&mut self, app: &AppHandle, media_url: &BangumiMediaUrl) {
         let Some(dash) = &media_url.dash else {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         };
 
         let Some(medias) = &dash.audio else {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         };
 
         if medias.is_empty() {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         }
 
         let mut join_set = JoinSet::new();
@@ -159,14 +156,16 @@ impl AudioTask {
             urls.extend_from_slice(&media.backup_url);
             urls.push(media.base_url.clone());
 
-            join_set.spawn(async move {
+            let get_url_with_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let url_with_content_length = bili_client.get_url_with_content_length(urls).await;
                 MediaForPrepare {
                     id,
                     url_with_content_length,
                 }
-            });
+            };
+
+            join_set.spawn(get_url_with_content_length_task.in_current_span());
         }
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
@@ -182,31 +181,25 @@ impl AudioTask {
         }
 
         self.prepare(app, &medias);
-
-        Ok(())
     }
 
-    pub async fn prepare_cheese(
-        &mut self,
-        app: &AppHandle,
-        media_url: &CheeseMediaUrl,
-    ) -> eyre::Result<()> {
+    pub async fn prepare_cheese(&mut self, app: &AppHandle, media_url: &CheeseMediaUrl) {
         let Some(dash) = &media_url.dash else {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         };
 
         let Some(medias) = &dash.audio else {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         };
 
         if medias.is_empty() {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         }
 
         let mut join_set = JoinSet::new();
@@ -219,14 +212,16 @@ impl AudioTask {
             urls.extend_from_slice(&media.backup_url);
             urls.push(media.base_url.clone());
 
-            join_set.spawn(async move {
+            let get_url_with_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let url_with_content_length = bili_client.get_url_with_content_length(urls).await;
                 MediaForPrepare {
                     id,
                     url_with_content_length,
                 }
-            });
+            };
+
+            join_set.spawn(get_url_with_content_length_task.in_current_span());
         }
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
@@ -242,8 +237,6 @@ impl AudioTask {
         }
 
         self.prepare(app, &medias);
-
-        Ok(())
     }
 
     fn prepare(&mut self, app: &AppHandle, medias: &[MediaForPrepare]) {
@@ -310,24 +303,19 @@ impl AudioTask {
     }
 
     #[allow(clippy::too_many_lines)]
+    #[instrument(level = "error", skip_all)]
     pub async fn process(
         &self,
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
     ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
-        let (audio_task, episode_title, ids_string) = {
-            (
-                progress.audio_task.clone(),
-                progress.episode_title.clone(),
-                progress.get_ids_string(),
-            )
-        };
+        let audio_task = progress.audio_task.clone();
 
         let m4a_path = episode_dir.join(format!("{filename}.m4a"));
         let file_exist_action = download_task.app.get_config().read().file_exist_action;
         if file_exist_action == FileExistAction::Skip && m4a_path.exists() {
-            tracing::debug!("{ids_string} `{filename}`音频文件已存在，跳过下载");
+            tracing::debug!("音频文件已存在，跳过下载");
             download_task.update_progress(|p| {
                 p.audio_task.skipped = true;
                 p.audio_task.completed = true;
@@ -377,11 +365,13 @@ impl AudioTask {
                 chunk_index,
             };
 
-            join_set.spawn(async move {
+            let chunk_order = chunk_index + 1;
+            let chunk_task = async move {
                 download_chunk_task.process().await.wrap_err(format!(
-                    "分片`{chunk_index}/{chunk_count}`下载失败({start}-{end})"
+                    "分片`{chunk_order}/{chunk_count}`下载失败({start}-{end})"
                 ))
-            });
+            };
+            join_set.spawn(chunk_task.in_current_span());
         }
 
         while let Some(join_result) = join_set.join_next().await {
@@ -392,7 +382,7 @@ impl AudioTask {
             match download_audio_result {
                 Ok(i) => download_task.update_progress(|p| p.audio_task.chunks[i].completed = true),
                 Err(err) => {
-                    let err_title = format!("{ids_string} `{episode_title}`音频的一个分片下载失败");
+                    let err_title = "音频的一个分片下载失败";
                     let message = err.to_message();
                     tracing::error!(err_title, message);
                 }

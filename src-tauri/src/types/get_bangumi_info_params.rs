@@ -6,3 +6,19 @@ pub enum GetBangumiInfoParams {
     EpId(i64),
     SeasonId(i64),
 }
+
+impl GetBangumiInfoParams {
+    pub fn get_ep_id(&self) -> Option<i64> {
+        match self {
+            Self::EpId(ep_id) => Some(*ep_id),
+            Self::SeasonId(_) => None,
+        }
+    }
+
+    pub fn get_season_id(&self) -> Option<i64> {
+        match self {
+            Self::EpId(_) => None,
+            Self::SeasonId(season_id) => Some(*season_id),
+        }
+    }
+}

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager};
+use tracing::instrument;
 
 use crate::{
     danmaku_xml_to_ass::canvas::CanvasConfig,
@@ -47,6 +48,7 @@ pub struct Config {
 }
 
 impl Config {
+    #[instrument(level = "error", skip_all)]
     pub fn new(app: &AppHandle) -> eyre::Result<Config> {
         let app_data_dir = app.path().app_data_dir()?;
         let config_path = app_data_dir.join("config.json");
@@ -67,6 +69,7 @@ impl Config {
         Ok(config)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub fn save(&self, app: &AppHandle) -> eyre::Result<()> {
         let app_data_dir = app.path().app_data_dir()?;
         let config_path = app_data_dir.join("config.json");

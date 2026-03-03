@@ -1,6 +1,7 @@
 use eyre::WrapErr;
 use parking_lot::RwLock;
 use tauri::{AppHandle, Manager, State};
+use tracing::instrument;
 
 use crate::{
     bili_client::BiliClient,
@@ -46,6 +47,7 @@ pub trait GetOrInitPlayerInfo {
 }
 
 impl GetOrInitPlayerInfo for Option<PlayerInfo> {
+    #[instrument(level = "error", skip_all)]
     async fn get_or_init<'a>(
         &'a mut self,
         app: &AppHandle,

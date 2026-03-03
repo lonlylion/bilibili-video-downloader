@@ -6,6 +6,7 @@ use std::{
 
 use byteorder::{BigEndian, ReadBytesExt};
 use eyre::{OptionExt, WrapErr, eyre};
+use tracing::instrument;
 
 use crate::{
     danmaku_xml_to_ass::{DamakuXmlDTag, DanmakuXmlITag},
@@ -48,6 +49,7 @@ impl From<u32> for BoxSizeField {
     }
 }
 
+#[instrument(level = "error", skip_all, fields(file_path = ?file_path))]
 pub fn is_mp4_complete(file_path: &Path) -> eyre::Result<bool> {
     let file = File::open(file_path).wrap_err(format!("打开文件`{}`失败", file_path.display()))?;
     let real_size = file
@@ -135,6 +137,7 @@ pub trait ToXml {
 }
 
 impl ToXml for Vec<DmSegMobileReply> {
+    #[instrument(level = "error", skip_all, fields(cid = cid))]
     fn to_xml(&self, cid: i64) -> eyre::Result<String> {
         let elems = self
             .iter()
@@ -177,6 +180,7 @@ pub fn seconds_to_srt_time(seconds: f64) -> String {
     format!("{h:02}:{m:02}:{s:02},{ms:03}")
 }
 
+#[instrument(level = "error", skip_all)]
 pub fn get_ffmpeg_program() -> eyre::Result<PathBuf> {
     let ffmpeg_program = std::env::current_exe()
         .wrap_err("获取当前可执行文件路径失败")?

@@ -2,6 +2,7 @@ use eyre::WrapErr;
 use parking_lot::RwLock;
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
+use tracing::instrument;
 
 use crate::{
     config::Config,
@@ -43,6 +44,8 @@ use crate::{
 #[tauri::command(async)]
 #[specta::specta]
 #[allow(clippy::needless_pass_by_value)]
+#[instrument(level = "error", skip_all)]
+// TODO: 改成 app.get_config_manager().read().clone()
 pub fn get_config(config: tauri::State<RwLock<Config>>) -> Config {
     config.read().clone()
 }
@@ -50,6 +53,7 @@ pub fn get_config(config: tauri::State<RwLock<Config>>) -> Config {
 #[tauri::command(async)]
 #[specta::specta]
 #[allow(clippy::needless_pass_by_value)]
+#[instrument(level = "error", skip_all)]
 pub fn save_config(app: AppHandle, config: Config) -> CommandResult<()> {
     let bili_client = app.get_bili_client();
     let config_state = app.get_config();
@@ -94,6 +98,7 @@ pub fn save_config(app: AppHandle, config: Config) -> CommandResult<()> {
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn generate_qrcode(app: AppHandle) -> CommandResult<QrcodeData> {
     let bili_client = app.get_bili_client();
     let qrcode_data = bili_client
@@ -106,6 +111,7 @@ pub async fn generate_qrcode(app: AppHandle) -> CommandResult<QrcodeData> {
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn get_qrcode_status(app: AppHandle, qrcode_key: String) -> CommandResult<QrcodeStatus> {
     let bili_client = app.get_bili_client();
     let qrcode_status = bili_client
@@ -117,6 +123,7 @@ pub async fn get_qrcode_status(app: AppHandle, qrcode_key: String) -> CommandRes
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn get_user_info(app: AppHandle, sessdata: String) -> CommandResult<UserInfo> {
     let bili_client = app.get_bili_client();
     let user_info = bili_client
@@ -128,6 +135,7 @@ pub async fn get_user_info(app: AppHandle, sessdata: String) -> CommandResult<Us
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all, fields(ep_id = params.get_ep_id(), season_id = params.get_season_id()))]
 pub async fn get_bangumi_info(
     app: AppHandle,
     params: GetBangumiInfoParams,
@@ -142,6 +150,7 @@ pub async fn get_bangumi_info(
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all, fields(bvid = params.get_bvid(), aid = params.get_aid()))]
 pub async fn get_normal_info(
     app: AppHandle,
     params: GetNormalInfoParams,
@@ -156,6 +165,7 @@ pub async fn get_normal_info(
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn get_user_video_info(
     app: AppHandle,
     params: GetUserVideoInfoParams,
@@ -170,6 +180,7 @@ pub async fn get_user_video_info(
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn get_fav_folders(app: AppHandle, uid: i64) -> CommandResult<FavFolders> {
     let bili_client = app.get_bili_client();
     let fav_folders = bili_client
@@ -181,6 +192,7 @@ pub async fn get_fav_folders(app: AppHandle, uid: i64) -> CommandResult<FavFolde
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn get_fav_info(app: AppHandle, params: GetFavInfoParams) -> CommandResult<FavInfo> {
     let bili_client = app.get_bili_client();
     let fav_info = bili_client
@@ -192,6 +204,7 @@ pub async fn get_fav_info(app: AppHandle, params: GetFavInfoParams) -> CommandRe
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn get_watch_later_info(app: AppHandle, page: i32) -> CommandResult<WatchLaterInfo> {
     let bili_client = app.get_bili_client();
     let watch_later_info = bili_client
@@ -203,6 +216,7 @@ pub async fn get_watch_later_info(app: AppHandle, page: i32) -> CommandResult<Wa
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn get_bangumi_follow_info(
     app: AppHandle,
     params: GetBangumiFollowInfoParams,
@@ -217,6 +231,7 @@ pub async fn get_bangumi_follow_info(
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn get_history_info(
     app: AppHandle,
     params: GetHistoryInfoParams,
@@ -232,15 +247,16 @@ pub async fn get_history_info(
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub fn create_download_tasks(app: AppHandle, params: CreateDownloadTaskParams) {
     let download_manager = app.get_download_manager();
     download_manager.create_download_tasks(&params);
-    tracing::debug!("下载任务创建成功");
 }
 
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub fn pause_download_tasks(app: AppHandle, task_ids: Vec<String>) {
     let download_manager = app.get_download_manager();
     download_manager.pause_download_tasks(&task_ids);
@@ -249,6 +265,7 @@ pub fn pause_download_tasks(app: AppHandle, task_ids: Vec<String>) {
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub fn resume_download_tasks(app: AppHandle, task_ids: Vec<String>) {
     let download_manager = app.get_download_manager();
     download_manager.resume_download_tasks(&task_ids);
@@ -257,6 +274,7 @@ pub fn resume_download_tasks(app: AppHandle, task_ids: Vec<String>) {
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub fn delete_download_tasks(app: AppHandle, task_ids: Vec<String>) {
     let download_manager = app.get_download_manager();
     download_manager.delete_download_tasks(&task_ids);
@@ -265,6 +283,7 @@ pub fn delete_download_tasks(app: AppHandle, task_ids: Vec<String>) {
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub fn restart_download_tasks(app: AppHandle, task_ids: Vec<String>) {
     let download_manager = app.get_download_manager();
     download_manager.restart_download_tasks(&task_ids);
@@ -273,6 +292,7 @@ pub fn restart_download_tasks(app: AppHandle, task_ids: Vec<String>) {
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all, fields(task_id = params.task_id))]
 pub fn restart_download_task(app: AppHandle, params: RestartDownloadTaskParams) {
     let download_manager = app.get_download_manager();
     download_manager.restart_download_task(&params);
@@ -281,6 +301,7 @@ pub fn restart_download_task(app: AppHandle, params: RestartDownloadTaskParams) 
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub fn restore_download_tasks(app: AppHandle) -> CommandResult<()> {
     let download_manager = app.get_download_manager();
     download_manager
@@ -292,6 +313,7 @@ pub fn restore_download_tasks(app: AppHandle) -> CommandResult<()> {
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn search(app: AppHandle, params: SearchParams) -> CommandResult<SearchResult> {
     use SearchParams::{Bangumi, Cheese, Fav, Normal, UserVideo};
     let bili_client = app.get_bili_client();
@@ -364,6 +386,7 @@ pub async fn search(app: AppHandle, params: SearchParams) -> CommandResult<Searc
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub fn get_logs_dir_size(app: AppHandle) -> CommandResult<u64> {
     let logs_dir = logger::logs_dir(&app)
         .wrap_err("获取日志目录失败")
@@ -382,6 +405,7 @@ pub fn get_logs_dir_size(app: AppHandle) -> CommandResult<u64> {
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub fn show_path_in_file_manager(app: AppHandle, path: &str) -> CommandResult<()> {
     app.opener()
         .reveal_item_in_dir(path)
@@ -392,6 +416,7 @@ pub fn show_path_in_file_manager(app: AppHandle, path: &str) -> CommandResult<()
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all, fields(bvid = bvid, cid = cid))]
 pub async fn get_skip_segments(
     app: AppHandle,
     bvid: String,
@@ -407,6 +432,7 @@ pub async fn get_skip_segments(
 
 #[tauri::command(async)]
 #[specta::specta]
+#[instrument(level = "error", skip_all)]
 pub async fn get_available_media_formats(
     app: AppHandle,
     params: GetAvailableMediaFormatsParams,

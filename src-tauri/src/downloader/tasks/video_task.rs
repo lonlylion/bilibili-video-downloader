@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
 use tokio::task::JoinSet;
+use tracing::{Instrument, instrument};
 
 use crate::{
     config::FileExistAction,
@@ -42,6 +43,7 @@ pub struct VideoTask {
 }
 
 impl VideoTask {
+    #[instrument(level = "error", skip_all)]
     pub async fn prepare_normal(
         &mut self,
         app: &AppHandle,
@@ -58,7 +60,7 @@ impl VideoTask {
             urls.extend_from_slice(&media.backup_url);
             urls.push(media.base_url.clone());
 
-            join_set.spawn(async move {
+            let get_url_with_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let url_with_content_length = bili_client.get_url_with_content_length(urls).await;
                 MediaForPrepare {
@@ -66,7 +68,9 @@ impl VideoTask {
                     url_with_content_length,
                     codecid,
                 }
-            });
+            };
+
+            join_set.spawn(get_url_with_content_length_task.in_current_span());
         }
 
         for durl in &media_url.durl {
@@ -78,7 +82,7 @@ impl VideoTask {
             urls.extend_from_slice(&durl.backup_url);
             urls.push(durl.url.clone());
 
-            join_set.spawn(async move {
+            let get_url_with_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let url_with_content_length = bili_client.get_url_with_content_length(urls).await;
                 MediaForPrepare {
@@ -86,7 +90,9 @@ impl VideoTask {
                     url_with_content_length,
                     codecid,
                 }
-            });
+            };
+
+            join_set.spawn(get_url_with_content_length_task.in_current_span());
         }
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
@@ -106,6 +112,7 @@ impl VideoTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn prepare_bangumi(
         &mut self,
         app: &AppHandle,
@@ -125,7 +132,7 @@ impl VideoTask {
                 urls.extend_from_slice(&media.backup_url);
                 urls.push(media.base_url.clone());
 
-                join_set.spawn(async move {
+                let get_url_with_content_length_task = async move {
                     let bili_client = app.get_bili_client();
                     let url_with_content_length =
                         bili_client.get_url_with_content_length(urls).await;
@@ -134,7 +141,9 @@ impl VideoTask {
                         url_with_content_length,
                         codecid,
                     }
-                });
+                };
+
+                join_set.spawn(get_url_with_content_length_task.in_current_span());
             }
         }
 
@@ -148,7 +157,7 @@ impl VideoTask {
                 urls.extend_from_slice(&media.backup_url);
                 urls.push(media.url.clone());
 
-                join_set.spawn(async move {
+                let get_url_with_content_length_task = async move {
                     let bili_client = app.get_bili_client();
                     let url_with_content_length =
                         bili_client.get_url_with_content_length(urls).await;
@@ -157,7 +166,9 @@ impl VideoTask {
                         url_with_content_length,
                         codecid,
                     }
-                });
+                };
+
+                join_set.spawn(get_url_with_content_length_task.in_current_span());
             }
         }
 
@@ -176,6 +187,7 @@ impl VideoTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn prepare_cheese(
         &mut self,
         app: &AppHandle,
@@ -195,7 +207,7 @@ impl VideoTask {
                 urls.extend_from_slice(&media.backup_url);
                 urls.push(media.base_url.clone());
 
-                join_set.spawn(async move {
+                let get_url_with_content_length_task = async move {
                     let bili_client = app.get_bili_client();
                     let url_with_content_length =
                         bili_client.get_url_with_content_length(urls).await;
@@ -204,7 +216,9 @@ impl VideoTask {
                         url_with_content_length,
                         codecid,
                     }
-                });
+                };
+
+                join_set.spawn(get_url_with_content_length_task.in_current_span());
             }
         }
 
@@ -218,7 +232,7 @@ impl VideoTask {
                 urls.extend_from_slice(&media.backup_url);
                 urls.push(media.url.clone());
 
-                join_set.spawn(async move {
+                let get_url_with_content_length_task = async move {
                     let bili_client = app.get_bili_client();
                     let url_with_content_length =
                         bili_client.get_url_with_content_length(urls).await;
@@ -227,7 +241,9 @@ impl VideoTask {
                         url_with_content_length,
                         codecid,
                     }
-                });
+                };
+
+                join_set.spawn(get_url_with_content_length_task.in_current_span());
             }
         }
 
@@ -246,6 +262,7 @@ impl VideoTask {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     fn prepare(&mut self, app: &AppHandle, medias: &[MediaForPrepare]) -> eyre::Result<()> {
         if medias.is_empty() {
             return Err(eyre!("获取视频地址失败，medias为空"));
@@ -318,25 +335,19 @@ impl VideoTask {
     }
 
     #[allow(clippy::too_many_lines)]
+    #[instrument(level = "error", skip_all)]
     pub async fn process(
         &self,
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
     ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
-        let (video_task, episode_title, ids_string) = {
-            let progress = download_task.progress.read();
-            (
-                progress.video_task.clone(),
-                progress.episode_title.clone(),
-                progress.get_ids_string(),
-            )
-        };
+        let video_task = download_task.progress.read().video_task.clone();
 
         let mp4_path = episode_dir.join(format!("{filename}.mp4"));
         let file_exist_action = download_task.app.get_config().read().file_exist_action;
         if file_exist_action == FileExistAction::Skip && mp4_path.exists() {
-            tracing::debug!("{ids_string} `{filename}`视频文件已存在，跳过下载");
+            tracing::debug!("视频文件已存在，跳过下载");
             download_task.update_progress(|p| {
                 p.video_task.skipped = true;
                 p.video_task.completed = true;
@@ -370,7 +381,7 @@ impl VideoTask {
         let chunk_count = video_task.chunks.len();
 
         let mut join_set = JoinSet::new();
-        for (i, chunk) in video_task.chunks.iter().enumerate() {
+        for (chunk_index, chunk) in video_task.chunks.iter().enumerate() {
             if chunk.completed {
                 continue;
             }
@@ -383,16 +394,16 @@ impl VideoTask {
                 end,
                 url: video_task.url.clone(),
                 file: file.clone(),
-                chunk_index: i,
+                chunk_index,
             };
 
-            let chunk_order = i + 1;
-
-            join_set.spawn(async move {
+            let chunk_order = chunk_index + 1;
+            let chunk_task = async move {
                 download_chunk_task.process().await.wrap_err(format!(
                     "分片`{chunk_order}/{chunk_count}`下载失败({start}-{end})"
                 ))
-            });
+            };
+            join_set.spawn(chunk_task.in_current_span());
         }
 
         while let Some(join_result) = join_set.join_next().await {
@@ -403,7 +414,7 @@ impl VideoTask {
             match download_video_result {
                 Ok(i) => download_task.update_progress(|p| p.video_task.chunks[i].completed = true),
                 Err(err) => {
-                    let err_title = format!("{ids_string} `{episode_title}`视频的一个分片下载失败");
+                    let err_title = "视频的一个分片下载失败";
                     let message = err.to_message();
                     tracing::error!(err_title, message);
                 }

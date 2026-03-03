@@ -15,6 +15,7 @@ use tauri::{
     http::{HeaderMap, HeaderValue},
 };
 use tokio::task::JoinSet;
+use tracing::{Instrument, instrument};
 
 use crate::{
     config::ProxyMode,
@@ -74,6 +75,7 @@ impl BiliClient {
         *self.content_length_client.write() = content_length_client;
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn generate_qrcode(&self) -> eyre::Result<QrcodeData> {
         // 发送生成二维码请求
         let request = self
@@ -106,6 +108,7 @@ impl BiliClient {
         Ok(qrcode_data)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_qrcode_status(&self, qrcode_key: &str) -> eyre::Result<QrcodeStatus> {
         // 发送获取二维码状态请求
         let params = json!({"qrcode_key": qrcode_key});
@@ -142,6 +145,7 @@ impl BiliClient {
         Ok(qrcode_status)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_user_info(&self, sessdata: &str) -> eyre::Result<UserInfo> {
         // 发送获取用户信息的请求
         let request = self
@@ -177,6 +181,7 @@ impl BiliClient {
         Ok(user_info)
     }
 
+    #[instrument(level = "error", skip_all, fields(bvid = params.get_bvid(), aid = params.get_aid()))]
     pub async fn get_normal_info(&self, params: GetNormalInfoParams) -> eyre::Result<NormalInfo> {
         use GetNormalInfoParams::{Aid, Bvid};
         let params = match params {
@@ -216,6 +221,7 @@ impl BiliClient {
         Ok(normal_info)
     }
 
+    #[instrument(level = "error", skip_all, fields(ep_id = params.get_ep_id(), season_id = params.get_season_id()))]
     pub async fn get_bangumi_info(
         &self,
         params: GetBangumiInfoParams,
@@ -258,6 +264,7 @@ impl BiliClient {
         Ok(bangumi_info)
     }
 
+    #[instrument(level = "error", skip_all, fields(ep_id = params.get_ep_id(), season_id = params.get_season_id()))]
     pub async fn get_cheese_info(&self, params: GetCheeseInfoParams) -> eyre::Result<CheeseInfo> {
         use GetCheeseInfoParams::{EpId, SeasonId};
         let params = match params {
@@ -297,6 +304,7 @@ impl BiliClient {
         Ok(cheese_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_user_video_info(
         &self,
         params: GetUserVideoInfoParams,
@@ -358,6 +366,7 @@ impl BiliClient {
         Ok(user_video_info)
     }
 
+    #[instrument(level = "error", skip_all, fields(bvid = bvid, cid = cid))]
     pub async fn get_normal_url(&self, bvid: &str, cid: i64) -> eyre::Result<NormalMediaUrl> {
         let params = json!({
             "bvid": bvid,
@@ -398,6 +407,7 @@ impl BiliClient {
         Ok(media_url)
     }
 
+    #[instrument(level = "error", skip_all, fields(cid = cid))]
     pub async fn get_bangumi_url(&self, cid: i64) -> eyre::Result<BangumiMediaUrl> {
         let media_url_v2 = self.get_bangumi_url_v2(cid).await?;
         if media_url_v2.video_info.is_drm {
@@ -407,6 +417,7 @@ impl BiliClient {
         }
     }
 
+    #[instrument(level = "error", skip_all, fields(cid = cid))]
     async fn get_bangumi_url_v1(&self, cid: i64) -> eyre::Result<BangumiMediaUrl> {
         let params = json!({
             "cid": cid,
@@ -449,6 +460,7 @@ impl BiliClient {
         Ok(media_url)
     }
 
+    #[instrument(level = "error", skip_all, fields(cid = cid))]
     async fn get_bangumi_url_v2(&self, cid: i64) -> eyre::Result<BangumiMediaUrlV2> {
         let params = json!({
             "cid": cid,
@@ -492,6 +504,7 @@ impl BiliClient {
         Ok(media_url)
     }
 
+    #[instrument(level = "error", skip_all, fields(ep_id = ep_id))]
     pub async fn get_cheese_url(&self, ep_id: i64) -> eyre::Result<CheeseMediaUrl> {
         let params = json!({
             "ep_id": ep_id,
@@ -534,6 +547,7 @@ impl BiliClient {
         Ok(media_url)
     }
 
+    #[instrument(level = "error", skip_all, fields(aid = aid, cid = cid))]
     pub async fn get_player_info(&self, aid: i64, cid: i64) -> eyre::Result<PlayerInfo> {
         let params = json!({
             "aid": aid,
@@ -572,6 +586,7 @@ impl BiliClient {
         Ok(player_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_fav_folders(&self, uid: i64) -> eyre::Result<FavFolders> {
         let params = json!({"up_mid": uid});
         // 发送获取收藏夹信息的请求
@@ -607,6 +622,7 @@ impl BiliClient {
         Ok(fav_folders)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_fav_info(&self, params: GetFavInfoParams) -> eyre::Result<FavInfo> {
         let params = json!({
             "media_id": params.media_list_id,
@@ -647,6 +663,7 @@ impl BiliClient {
         Ok(fav_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_watch_later_info(&self, page: i32) -> eyre::Result<WatchLaterInfo> {
         // 发送获取稍后观看信息的请求
         let params = json!({"ps": 20, "pn": page});
@@ -682,6 +699,7 @@ impl BiliClient {
         Ok(watch_later_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_bangumi_follow_info(
         &self,
         params: GetBangumiFollowInfoParams,
@@ -726,6 +744,7 @@ impl BiliClient {
         Ok(bangumi_follow_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_history_info(
         &self,
         params: GetHistoryInfoParams,
@@ -773,6 +792,7 @@ impl BiliClient {
         Ok(history_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_media_chunk(
         &self,
         media_url: &str,
@@ -796,7 +816,9 @@ impl BiliClient {
         Ok(bytes)
     }
 
+    #[instrument(level = "error", skip_all, fields(media_url = media_url))]
     pub async fn get_content_length(&self, media_url: &str) -> eyre::Result<u64> {
+        #[instrument(level = "error", skip_all)]
         fn parse_content_length(headers: &HeaderMap) -> eyre::Result<u64> {
             headers
                 .get("Content-Length")
@@ -807,6 +829,7 @@ impl BiliClient {
                 .wrap_err("Content-Length 响应头无法转换为整数")
         }
 
+        #[instrument(level = "error", skip_all)]
         fn parse_total_from_content_range(headers: &HeaderMap) -> eyre::Result<u64> {
             // Example: "bytes 0-0/12345"
             let content_range = headers
@@ -854,19 +877,21 @@ impl BiliClient {
         Err(eyre!("预料之外的状态码({status})"))
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_url_with_content_length(&self, urls: Vec<String>) -> Vec<(String, u64)> {
         let mut url_with_content_length = Vec::new();
         let mut join_set = JoinSet::new();
 
         for url in urls {
             let app = self.app.clone();
-            join_set.spawn(async move {
+            let get_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let Ok(content_length) = bili_client.get_content_length(&url).await else {
                     return None;
                 };
                 Some((url, content_length))
-            });
+            };
+            join_set.spawn(get_content_length_task.in_current_span());
         }
 
         while let Some(join_result) = join_set.join_next().await {
@@ -880,6 +905,7 @@ impl BiliClient {
         url_with_content_length
     }
 
+    #[instrument(level = "error", skip_all, fields(aid = aid, cid = cid, duration = duration))]
     pub async fn get_danmaku(
         &self,
         aid: i64,
@@ -895,7 +921,9 @@ impl BiliClient {
             let client = client.clone();
             let cookie = self.get_cookie();
 
-            join_set.spawn(async move {
+            let segment_span =
+                tracing::error_span!("get_danmaku_segment", segment_index = segment_index);
+            let segment_task = async move {
                 // 发送获取分段弹幕的请求
                 let params = json!({
                     "type": 1,
@@ -919,7 +947,8 @@ impl BiliClient {
                     DmSegMobileReply::decode(body).wrap_err("将body解析为DmSegMobileReply失败")?;
 
                 Ok(reply)
-            });
+            };
+            join_set.spawn(segment_task.instrument(segment_span));
         }
 
         let mut replies = Vec::new();
@@ -935,6 +964,7 @@ impl BiliClient {
         Ok(replies)
     }
 
+    #[instrument(level = "error", skip_all, fields(url = url))]
     pub async fn get_subtitle(&self, url: &str) -> eyre::Result<Subtitle> {
         let request = self.api_client.read().get(url);
         let http_resp = request.send().await?;
@@ -950,6 +980,7 @@ impl BiliClient {
         Ok(subtitle)
     }
 
+    #[instrument(level = "error", skip_all, fields(url = url))]
     pub async fn get_cover_data_and_ext(&self, url: &str) -> eyre::Result<(Bytes, String)> {
         let request = self.api_client.read().get(url);
         let http_resp = request.send().await?;
@@ -980,6 +1011,7 @@ impl BiliClient {
         Ok((bytes, ext.to_string()))
     }
 
+    #[instrument(level = "error", skip_all, fields(aid = aid))]
     pub async fn get_tags(&self, aid: i64) -> eyre::Result<Tags> {
         // 发送获取普通视频标签的请求
         let params = json!({"aid": aid});
@@ -1015,6 +1047,7 @@ impl BiliClient {
         Ok(tags)
     }
 
+    #[instrument(level = "error", skip_all, fields(bvid = bvid, cid = cid))]
     pub async fn get_skip_segments(
         &self,
         bvid: &str,

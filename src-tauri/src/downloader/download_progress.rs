@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -71,6 +72,7 @@ pub struct DownloadProgress {
 }
 
 impl DownloadProgress {
+    #[instrument(level = "error", skip_all)]
     pub fn from_normal(
         app: &AppHandle,
         info: &NormalInfo,
@@ -87,10 +89,11 @@ impl DownloadProgress {
     }
 
     #[allow(clippy::cast_possible_wrap)]
+    #[instrument(level = "error", skip_all)]
     pub fn from_bangumi(app: &AppHandle, info: &BangumiInfo, ep_id: i64) -> eyre::Result<Self> {
         let (episode, episode_order) = info.get_episode_with_order(ep_id)?;
         let Some(duration) = episode.duration else {
-            return Err(eyre!("找不到ep_id为`{ep_id}`的番剧的时长"));
+            return Err(eyre!("duration为None"));
         };
         // 将毫秒转换为秒
         let duration = duration / 1000;
@@ -98,7 +101,6 @@ impl DownloadProgress {
         let config = app.get_config().read().clone();
 
         let tasks = Tasks::new(&config, &episode.cover);
-
         let (up_name, up_uid, up_avatar) = if let Some(up_info) = &info.up_info {
             (
                 Some(up_info.uname.clone()),
@@ -147,12 +149,13 @@ impl DownloadProgress {
         Ok(progress)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub fn from_cheese(app: &AppHandle, info: &CheeseInfo, ep_id: i64) -> eyre::Result<Self> {
         let episode = info
             .episodes
             .iter()
             .find(|ep| ep.id == ep_id)
-            .ok_or_eyre(format!("找不到ep_id为`{ep_id}`的课程"))?;
+            .ok_or_eyre("找不到ep_id对应的课程")?;
 
         let config = app.get_config().read().clone();
 
@@ -196,9 +199,8 @@ impl DownloadProgress {
         Ok(progress)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn process(&mut self, download_task: &Arc<DownloadTask>) -> eyre::Result<()> {
-        let ids_string = self.get_ids_string();
-
         let _ = DownloadEvent::ProgressPreparing {
             task_id: self.task_id.clone(),
         }
@@ -211,12 +213,8 @@ impl DownloadProgress {
         self.completed_ts = None; // 重置完成时间戳
         download_task.update_progress(|p| *p = self.clone());
 
-        let (episode_dir, filename) = (&self.episode_dir, &self.filename);
-
-        std::fs::create_dir_all(episode_dir).wrap_err(format!(
-            "{ids_string} 创建目录`{}`失败",
-            episode_dir.display()
-        ))?;
+        std::fs::create_dir_all(&self.episode_dir)
+            .wrap_err(format!("创建目录`{}`失败", self.episode_dir.display()))?;
 
         let video_task = &self.video_task;
         let audio_task = &self.audio_task;
@@ -234,16 +232,16 @@ impl DownloadProgress {
             video_task
                 .process(download_task, self)
                 .await
-                .wrap_err(format!("{ids_string} `{filename}`下载视频文件失败"))?;
-            tracing::debug!("{ids_string} `{filename}`视频下载任务完成");
+                .wrap_err("下载视频文件失败")?;
+            tracing::debug!("视频下载任务完成");
         }
 
         if !audio_task.is_completed() && audio_task.content_length != 0 {
             audio_task
                 .process(download_task, self)
                 .await
-                .wrap_err(format!("{ids_string} `{filename}`下载音频文件失败"))?;
-            tracing::debug!("{ids_string} `{filename}`音频下载任务完成");
+                .wrap_err("下载音频文件失败")?;
+            tracing::debug!("音频下载任务完成");
         }
 
         let video_process_task_is_completed = video_process_task.is_completed();
@@ -252,55 +250,53 @@ impl DownloadProgress {
                 p.video_process_task.skipped = true;
                 p.video_process_task.completed = true;
             });
-            tracing::debug!(
-                "{ids_string} `{filename}`受版权保护(DRM)，无法处理，已跳过视频处理任务"
-            );
+            tracing::debug!("受版权保护(DRM)，无法处理，已跳过视频处理任务");
         } else if !video_process_task_is_completed {
             video_process_task
                 .process(download_task, self, &mut player_info)
                 .await
-                .wrap_err(format!("{ids_string} `{filename}`视频处理失败"))?;
-            tracing::debug!("{ids_string} `{filename}`视频处理任务完成");
+                .wrap_err("视频处理失败")?;
+            tracing::debug!("视频处理任务完成");
         }
 
         if !danmaku_task.is_completed() {
             danmaku_task
                 .process(download_task, self)
                 .await
-                .wrap_err(format!("{ids_string} `{filename}`下载弹幕失败"))?;
-            tracing::debug!("{ids_string} `{filename}`弹幕下载任务完成");
+                .wrap_err("下载弹幕失败")?;
+            tracing::debug!("弹幕下载任务完成");
         }
 
         if !subtitle_task.is_completed() {
             subtitle_task
                 .process(download_task, self, &mut player_info)
                 .await
-                .wrap_err(format!("{ids_string} `{filename}`下载字幕失败"))?;
-            tracing::debug!("{ids_string} `{filename}`字幕下载任务完成");
+                .wrap_err("下载字幕失败")?;
+            tracing::debug!("字幕下载任务完成");
         }
 
         if !cover_task.is_completed() {
             cover_task
                 .process(download_task, self)
                 .await
-                .wrap_err(format!("{ids_string} `{filename}`下载封面失败"))?;
-            tracing::debug!("{ids_string} `{filename}`封面下载任务完成");
+                .wrap_err("下载封面失败")?;
+            tracing::debug!("封面下载任务完成");
         }
 
         if !nfo_task.is_completed() {
             nfo_task
                 .process(download_task, self, &mut episode_info)
                 .await
-                .wrap_err(format!("{ids_string} `{filename}`下载NFO失败"))?;
-            tracing::debug!("{ids_string} `{filename}`NFO下载任务完成");
+                .wrap_err("下载NFO失败")?;
+            tracing::debug!("NFO下载任务完成");
         }
 
         if !json_task.is_completed() {
             json_task
                 .process(download_task, self, &mut episode_info)
                 .await
-                .wrap_err(format!("{ids_string} `{filename}`下载JSON元数据失败"))?;
-            tracing::debug!("{ids_string} `{filename}`JSON元数据下载任务完成");
+                .wrap_err("下载JSON元数据失败")?;
+            tracing::debug!("JSON元数据下载任务完成");
         }
 
         let completed_ts = SystemTime::now()
@@ -314,6 +310,7 @@ impl DownloadProgress {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn prepare(&mut self, app: &AppHandle) -> eyre::Result<()> {
         let video_selected = self.video_task.selected;
         let video_completed = self.video_task.completed;
@@ -348,7 +345,7 @@ impl DownloadProgress {
 
                 if audio_selected && !audio_completed {
                     // 如果音频被选中且未完成，则准备音频任务
-                    self.audio_task.prepare_normal(app, &media_url).await?;
+                    self.audio_task.prepare_normal(app, &media_url).await;
                 }
             }
             EpisodeType::Bangumi => {
@@ -366,7 +363,7 @@ impl DownloadProgress {
 
                 if audio_selected && !audio_completed {
                     // 如果音频被选中且未完成，则准备音频任务
-                    self.audio_task.prepare_bangumi(app, &media_url).await?;
+                    self.audio_task.prepare_bangumi(app, &media_url).await;
                 }
             }
             EpisodeType::Cheese => {
@@ -388,7 +385,7 @@ impl DownloadProgress {
 
                 if audio_selected && !audio_completed {
                     // 如果音频被选中且未完成，则准备音频任务
-                    self.audio_task.prepare_cheese(app, &media_url).await?;
+                    self.audio_task.prepare_cheese(app, &media_url).await;
                 }
             }
         }
@@ -399,6 +396,7 @@ impl DownloadProgress {
         Ok(())
     }
 
+    #[instrument(level = "error", skip_all)]
     fn update_fmt_fields(&mut self, app: &AppHandle) -> eyre::Result<()> {
         let fmt_params = self.create_fmt_params();
 
@@ -435,6 +433,7 @@ impl DownloadProgress {
         }
     }
 
+    #[instrument(level = "error", skip_all)]
     pub fn save(&self, app: &AppHandle, allow_create: bool) -> eyre::Result<()> {
         let progress = self.clone();
         let file_name = format!("{}.json", progress.task_id);
@@ -475,17 +474,10 @@ impl DownloadProgress {
         self.nfo_task.mark_uncompleted();
         self.json_task.mark_uncompleted();
     }
-
-    pub fn get_ids_string(&self) -> String {
-        let aid = self.aid;
-        let bvid = self.bvid.as_deref().unwrap_or("None");
-        let cid = self.cid;
-        let ep_id = self.ep_id.map_or("None".to_string(), |id| id.to_string());
-        format!("aid: {aid}, bvid: {bvid}, cid: {cid}, ep_id: {ep_id}")
-    }
 }
 
 #[allow(clippy::too_many_lines)]
+#[instrument(level = "error", skip_all)]
 fn create_normal_progresses_for_single(
     info: &NormalInfo,
     cid: Option<i64>,
@@ -498,7 +490,7 @@ fn create_normal_progresses_for_single(
     if let Some(cid) = cid {
         // 如果有cid，则说明是要下载单个分P
         let Some(page) = info.pages.iter().find(|p| p.cid == cid) else {
-            return Err(eyre!("找不到cid为`{cid}`的分P"));
+            return Err(eyre!("找不到cid对应的分P"));
         };
         let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),
@@ -615,6 +607,7 @@ fn create_normal_progresses_for_single(
 }
 
 #[allow(clippy::too_many_lines)]
+#[instrument(level = "error", skip_all)]
 fn create_normal_progresses_for_season(
     ugc_season: &UgcSeason,
     info: &NormalInfo,
@@ -626,7 +619,7 @@ fn create_normal_progresses_for_season(
         .sections
         .iter()
         .position(|s| s.episodes.iter().any(|e| e.aid == aid))
-        .ok_or_eyre(format!("找不到含有aid为`{aid}`的ep的section"))?;
+        .ok_or_eyre("找不到含有对应aid的section")?;
     let section = &ugc_season.sections[section_index];
     #[allow(clippy::cast_possible_wrap)]
     let (ep, episode_order) = section
@@ -635,7 +628,7 @@ fn create_normal_progresses_for_season(
         .enumerate()
         .map(|(i, e)| (e, i as i64 + 1))
         .find(|(e, _)| e.aid == aid)
-        .ok_or_eyre(format!("在section中找不到aid为`{aid}`的ep"))?;
+        .ok_or_eyre("在section中找不到aid对应的ep")?;
 
     let tasks = Tasks::new(config, &ep.arc.pic);
 
@@ -644,7 +637,7 @@ fn create_normal_progresses_for_season(
     if let Some(cid) = cid {
         // 如果有cid，则说明是要下载单个分P
         let Some(page) = ep.pages.iter().find(|p| p.cid == cid) else {
-            return Err(eyre!("找不到cid为`{cid}`的分P"));
+            return Err(eyre!("找不到cid对应的分P"));
         };
         let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),

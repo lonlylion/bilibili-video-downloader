@@ -3,6 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use eyre::{OptionExt, WrapErr};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use tracing::instrument;
 
 use crate::{
     config::Config,
@@ -36,6 +37,7 @@ pub struct FmtParams {
 }
 
 impl FmtParams {
+    #[instrument(level = "error", skip_all)]
     pub fn get_episode_dir_and_filename(&self, config: &Config) -> eyre::Result<(PathBuf, String)> {
         use strfmt::strfmt;
 
