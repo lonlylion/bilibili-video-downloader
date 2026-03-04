@@ -19,7 +19,7 @@ pub mod get_history_info_params;
 pub mod get_normal_info_params;
 pub mod get_user_video_info_params;
 pub mod history_info;
-pub mod log_level;
+pub mod log_metadata;
 pub mod normal_info;
 pub mod normal_media_url;
 pub mod player_info;

@@ -33,6 +33,7 @@ use crate::{
     downloader::download_manager::DownloadManager,
     errors::install_custom_eyre_handler,
     events::{DownloadEvent, LogEvent},
+    types::log_metadata::LogMetadata,
 };
 
 fn generate_context() -> tauri::Context<Wry> {
@@ -72,7 +73,8 @@ pub fn run() {
             get_skip_segments,
             get_available_media_formats,
         ])
-        .events(tauri_specta::collect_events![LogEvent, DownloadEvent]);
+        .events(tauri_specta::collect_events![LogEvent, DownloadEvent])
+        .typ::<LogMetadata>();
 
     #[cfg(debug_assertions)]
     builder
