@@ -30,10 +30,10 @@ use tauri::{Manager, Wry};
 
 use crate::{
     bili_client::BiliClient,
+    commands::open_log_file,
     downloader::download_manager::DownloadManager,
     errors::install_custom_eyre_handler,
     events::{DownloadEvent, LogEvent},
-    types::log_metadata::LogMetadata,
 };
 
 fn generate_context() -> tauri::Context<Wry> {
@@ -72,9 +72,9 @@ pub fn run() {
             show_path_in_file_manager,
             get_skip_segments,
             get_available_media_formats,
+            open_log_file,
         ])
-        .events(tauri_specta::collect_events![LogEvent, DownloadEvent])
-        .typ::<LogMetadata>();
+        .events(tauri_specta::collect_events![LogEvent, DownloadEvent]);
 
     #[cfg(debug_assertions)]
     builder
