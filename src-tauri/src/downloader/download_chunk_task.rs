@@ -67,7 +67,10 @@ impl DownloadChunkTask {
                         }
                     }
                 },
-
+                // FIXME: 直接返回chunk_index存在进度误标风险
+                // 上层会将这个分片标记为已下载，而分片其实是被打断的
+                // 应该把返回值改成 enum DownloadChunkResult { Downloaded(idx), Interrupted }
+                // 然后由上层处理
                 _ = restart_receiver.changed() => break Ok(self.chunk_index),
 
                 _ = delete_receiver.changed() => break Ok(self.chunk_index),

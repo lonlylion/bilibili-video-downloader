@@ -438,6 +438,10 @@ impl DownloadTask {
         let updated_progress = {
             let mut progress = self.progress.write();
             update_fn(&mut progress);
+            // TODO: 这里应该返回 progress.clone()
+            // 专门用一个 {} 框出来就是为了避免在emit和save期间仍持有写锁
+            // 然而这里弄错了progress的类型
+            // 错把progress当成了DownloadProgress，实则类型为RwLockWriteGuard
             progress
         };
         // 发送更新事件并保存到文件

@@ -158,7 +158,9 @@ impl DownloadManager {
                 tracing::error!(err_title, message);
                 continue;
             };
-
+            // TODO: 应该先发删除新号再删文件
+            // 因为发信号失败会把任务重新塞回去
+            // 目前先删文件会导致发信号失败时出现 任务还在但文件没了的情况
             if let Err(err) = self.delete_progress_file(task_id) {
                 let err_title = "删除下载任务失败";
                 let message = err.to_message();
