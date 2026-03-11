@@ -7,6 +7,7 @@ mod errors;
 mod events;
 mod extensions;
 mod logger;
+mod plugin;
 mod types;
 mod utils;
 mod wbi;
@@ -16,14 +17,14 @@ mod protobuf {
 }
 
 use commands::{
-    create_download_tasks, delete_download_tasks, generate_qrcode, get_available_media_formats,
-    get_bangumi_follow_info, get_bangumi_info, get_config, get_fav_folders, get_fav_info,
-    get_history_info, get_logs_dir_size, get_normal_info, get_qrcode_status, get_skip_segments,
-    get_user_info, get_user_video_info, get_watch_later_info, pause_download_tasks,
-    restart_download_task, restart_download_tasks, restore_download_tasks, resume_download_tasks,
-    save_config, search, show_path_in_file_manager,
+    add_plugin, create_download_tasks, delete_download_tasks, generate_qrcode,
+    get_available_media_formats, get_bangumi_follow_info, get_bangumi_info, get_config,
+    get_fav_folders, get_fav_info, get_history_info, get_logs_dir_size, get_normal_info,
+    get_plugin_infos, get_qrcode_status, get_skip_segments, get_user_info, get_user_video_info,
+    get_watch_later_info, pause_download_tasks, restart_download_task, restart_download_tasks,
+    restore_download_tasks, resume_download_tasks, save_config, search, set_plugin_enabled,
+    set_plugin_priority, show_path_in_file_manager, uninstall_plugin,
 };
-use config::Config;
 use eyre::WrapErr;
 use parking_lot::RwLock;
 use tauri::{Manager, Wry};
@@ -31,9 +32,11 @@ use tauri::{Manager, Wry};
 use crate::{
     bili_client::BiliClient,
     commands::open_log_file,
+    config::Config,
     downloader::download_manager::DownloadManager,
     errors::install_custom_eyre_handler,
-    events::{DownloadEvent, LogEvent},
+    events::{DownloadEvent, LogEvent, PluginEvent},
+    plugin::plugin_manager::PluginManager,
 };
 
 fn generate_context() -> tauri::Context<Wry> {
@@ -49,6 +52,7 @@ pub fn run() {
         .commands(tauri_specta::collect_commands![
             get_config,
             save_config,
+            get_plugin_infos,
             generate_qrcode,
             get_qrcode_status,
             get_user_info,
@@ -73,8 +77,16 @@ pub fn run() {
             get_skip_segments,
             get_available_media_formats,
             open_log_file,
+            add_plugin,
+            uninstall_plugin,
+            set_plugin_enabled,
+            set_plugin_priority,
         ])
-        .events(tauri_specta::collect_events![LogEvent, DownloadEvent]);
+        .events(tauri_specta::collect_events![
+            LogEvent,
+            DownloadEvent,
+            PluginEvent,
+        ]);
 
     #[cfg(debug_assertions)]
     builder
@@ -121,6 +133,9 @@ pub fn run() {
             app.manage(download_manager);
 
             logger::init(app.handle())?;
+
+            let plugin_manager = PluginManager::new(app.handle())?;
+            app.manage(plugin_manager);
 
             Ok(())
         })

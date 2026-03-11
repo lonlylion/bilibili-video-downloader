@@ -16,6 +16,9 @@ async saveConfig(config: Config) : Promise<Result<null, CommandError>> {
     else return { status: "error", error: e  as any };
 }
 },
+async getPluginInfos() : Promise<PluginInfo[]> {
+    return await TAURI_INVOKE("get_plugin_infos");
+},
 async generateQrcode() : Promise<Result<QrcodeData, CommandError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("generate_qrcode") };
@@ -177,6 +180,38 @@ async openLogFile(path: string) : Promise<Result<LogMetadata[], CommandError>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async addPlugin(pluginPath: string) : Promise<Result<null, CommandError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_plugin", { pluginPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async uninstallPlugin(pluginPath: string) : Promise<Result<null, CommandError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("uninstall_plugin", { pluginPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setPluginEnabled(pluginPath: string, enabled: boolean) : Promise<Result<null, CommandError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_plugin_enabled", { pluginPath, enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setPluginPriority(pluginPath: string, priority: number) : Promise<Result<null, CommandError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_plugin_priority", { pluginPath, priority }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -185,10 +220,12 @@ async openLogFile(path: string) : Promise<Result<LogMetadata[], CommandError>> {
 
 export const events = __makeEvents__<{
 downloadEvent: DownloadEvent,
-logEvent: LogEvent
+logEvent: LogEvent,
+pluginEvent: PluginEvent
 }>({
 downloadEvent: "download-event",
-logEvent: "log-event"
+logEvent: "log-event",
+pluginEvent: "plugin-event"
 })
 
 /** user-defined constants **/
@@ -371,6 +408,12 @@ export type PaymentInBangumi = { discount: number; pay_type: PayType; price: str
 export type PendantInCheese = { image: string; name: string; pid: number }
 export type PendantInUserInfo = { pid: number; name: string; image: string; expire: number; image_enhance: string; image_enhance_frame: string; n_pid: number }
 export type PlayStrategy = { strategies: string[] }
+export type PluginDescriptorInfo = { sdk_api_version: number; id: string; name: string; version: string; hooks: PluginHookPoint[]; failure_policy: PluginFailurePolicyInfo; description: string }
+export type PluginEvent = { event: "Loaded"; data: { plugin_info: PluginInfo } } | { event: "Update"; data: { plugin_info: PluginInfo } } | { event: "Uninstall"; data: { plugin_path: string } }
+export type PluginFailurePolicyInfo = "FailOpen" | "FailClosed"
+export type PluginHookPoint = "BeforeVideoProcess" | "AfterPrepare" | "OnCompleted"
+export type PluginInfo = { path: string; enabled: boolean; priority: number; descriptor: PluginDescriptorInfo; runtime_status: PluginRuntimeStatus }
+export type PluginRuntimeStatus = "Unknown" | "Loaded" | "Disabled" | "LoadFailed"
 export type Positive = { id: number; title: string }
 export type PreviewedPurchaseNote = { long_watch_text: string; pay_text: string; price_format: string; watch_text: string; watching_text: string }
 export type Producer = { mid: number; type: number; is_contribute: number | null; title: string }

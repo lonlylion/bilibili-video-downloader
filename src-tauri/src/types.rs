@@ -23,6 +23,7 @@ pub mod log_metadata;
 pub mod normal_info;
 pub mod normal_media_url;
 pub mod player_info;
+pub mod plugin_info;
 pub mod qrcode_data;
 pub mod qrcode_status;
 pub mod restart_download_task_params;

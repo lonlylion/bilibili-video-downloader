@@ -286,9 +286,11 @@ name = "bilibili-video-downloader"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bilibili-video-downloader-plugin-api",
  "byteorder",
  "bytes",
  "chrono",
+ "dlopen2 0.8.2",
  "eyre",
  "float-ord",
  "fs4",
@@ -321,6 +323,13 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "yaserde",
+]
+
+[[package]]
+name = "bilibili-video-downloader-plugin-api"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -854,6 +863,18 @@ name = "dlopen2"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1297103d2bbaea85724fcee6294c2d50b1081f9ad47d0f6f6f61eda65315a6"
+dependencies = [
+ "dlopen2_derive",
+ "libc",
+ "once_cell",
+ "winapi",
+]
+
+[[package]]
+name = "dlopen2"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e2c5bd4158e66d1e215c49b837e11d62f3267b30c92f1d171c4d3105e3dc4d4"
 dependencies = [
  "dlopen2_derive",
  "libc",
@@ -4186,7 +4207,7 @@ dependencies = [
  "core-graphics",
  "crossbeam-channel",
  "dispatch",
- "dlopen2",
+ "dlopen2 0.7.0",
  "dpi",
  "gdkwayland-sys",
  "gdkx11-sys",

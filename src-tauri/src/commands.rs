@@ -32,6 +32,7 @@ use crate::{
         history_info::HistoryInfo,
         log_metadata::LogMetadata,
         normal_info::NormalInfo,
+        plugin_info::PluginInfo,
         qrcode_data::QrcodeData,
         qrcode_status::QrcodeStatus,
         restart_download_task_params::RestartDownloadTaskParams,
@@ -64,15 +65,16 @@ pub fn save_config(app: AppHandle, config: Config) -> CommandResult<()> {
     let bili_client = app.get_bili_client();
     let config_state = app.get_config();
 
-    let proxy_changed = {
-        let config_state = config_state.read();
-        config_state.proxy_mode != config.proxy_mode
-            || config_state.proxy_host != config.proxy_host
-            || config_state.proxy_port != config.proxy_port
-    };
-
     let enable_file_logger = config.enable_file_logger;
-    let file_logger_changed = config_state.read().enable_file_logger != enable_file_logger;
+    let (proxy_changed, file_logger_changed) = {
+        let current_config = config_state.read();
+        (
+            current_config.proxy_mode != config.proxy_mode
+                || current_config.proxy_host != config.proxy_host
+                || current_config.proxy_port != config.proxy_port,
+            current_config.enable_file_logger != enable_file_logger,
+        )
+    };
 
     {
         // 包裹在大括号中，以便自动释放写锁
@@ -505,4 +507,72 @@ pub fn open_log_file(path: &str) -> CommandResult<Vec<LogMetadata>> {
     }
 
     Ok(logs)
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command(async)]
+#[specta::specta]
+#[instrument(level = "error", skip_all)]
+pub fn get_plugin_infos(app: AppHandle) -> Vec<PluginInfo> {
+    app.get_plugin_manager().get_plugin_infos()
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command(async)]
+#[specta::specta]
+#[instrument(level = "error", skip_all, fields(plugin_path = plugin_path))]
+pub fn add_plugin(app: AppHandle, plugin_path: String) -> CommandResult<()> {
+    let plugin_manager = app.get_plugin_manager();
+
+    plugin_manager
+        .add_plugin(&plugin_path)
+        .map_err(|err| CommandError::from("加载插件失败", err))?;
+
+    Ok(())
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command(async)]
+#[specta::specta]
+#[instrument(level = "error", skip_all, fields(plugin_path = plugin_path))]
+pub fn uninstall_plugin(app: AppHandle, plugin_path: String) -> CommandResult<()> {
+    let plugin_manager = app.get_plugin_manager();
+
+    plugin_manager
+        .uninstall_plugin(&plugin_path)
+        .map_err(|err| CommandError::from("卸载插件失败", err))?;
+
+    Ok(())
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command(async)]
+#[specta::specta]
+#[instrument(level = "error", skip_all, fields(plugin_path = plugin_path, enabled = enabled))]
+pub fn set_plugin_enabled(app: AppHandle, plugin_path: String, enabled: bool) -> CommandResult<()> {
+    let plugin_manager = app.get_plugin_manager();
+
+    plugin_manager
+        .set_plugin_enabled(&plugin_path, enabled)
+        .map_err(|err| CommandError::from("设置插件启用状态失败", err))?;
+
+    Ok(())
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command(async)]
+#[specta::specta]
+#[instrument(level = "error", skip_all, fields(plugin_path = plugin_path, priority = priority))]
+pub fn set_plugin_priority(
+    app: AppHandle,
+    plugin_path: String,
+    priority: i32,
+) -> CommandResult<()> {
+    let plugin_manager = app.get_plugin_manager();
+
+    plugin_manager
+        .set_plugin_priority(&plugin_path, priority)
+        .map_err(|err| CommandError::from("设置插件优先级失败", err))?;
+
+    Ok(())
 }

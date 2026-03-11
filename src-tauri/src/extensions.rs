@@ -7,6 +7,7 @@ use crate::{
     bili_client::BiliClient,
     config::Config,
     downloader::{download_manager::DownloadManager, download_progress::DownloadProgress},
+    plugin::plugin_manager::PluginManager,
     types::player_info::PlayerInfo,
 };
 
@@ -24,6 +25,7 @@ pub trait AppHandleExt {
     fn get_config(&self) -> State<'_, RwLock<Config>>;
     fn get_bili_client(&self) -> State<'_, BiliClient>;
     fn get_download_manager(&self) -> State<'_, DownloadManager>;
+    fn get_plugin_manager(&self) -> State<'_, PluginManager>;
 }
 
 impl AppHandleExt for AppHandle {
@@ -35,6 +37,9 @@ impl AppHandleExt for AppHandle {
     }
     fn get_download_manager(&self) -> State<'_, DownloadManager> {
         self.state::<DownloadManager>()
+    }
+    fn get_plugin_manager(&self) -> State<'_, PluginManager> {
+        self.state::<PluginManager>()
     }
 }
 

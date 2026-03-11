@@ -5,6 +5,7 @@ use tauri_specta::Event;
 use crate::downloader::{
     download_progress::DownloadProgress, download_task_state::DownloadTaskState,
 };
+use crate::types::plugin_info::PluginInfo;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 #[serde(rename_all = "camelCase")]
@@ -45,4 +46,12 @@ pub enum DownloadEvent {
     ProgressUpdate {
         progress: DownloadProgress,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+#[serde(tag = "event", content = "data")]
+pub enum PluginEvent {
+    Loaded { plugin_info: PluginInfo },
+    Update { plugin_info: PluginInfo },
+    Uninstall { plugin_path: String },
 }

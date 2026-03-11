@@ -24,6 +24,9 @@ use crate::{
     },
     events::DownloadEvent,
     extensions::AppHandleExt,
+    plugin::hook_context::{
+        AfterPrepareContext, BeforeVideoProcessContext, HookContext, OnCompletedContext,
+    },
     types::{
         audio_quality::AudioQuality,
         bangumi_info::BangumiInfo,
@@ -200,15 +203,23 @@ impl DownloadProgress {
     }
 
     #[instrument(level = "error", skip_all)]
+    #[allow(clippy::too_many_lines)]
     pub async fn process(&mut self, download_task: &Arc<DownloadTask>) -> eyre::Result<()> {
+        let app = &download_task.app;
         let _ = DownloadEvent::ProgressPreparing {
             task_id: self.task_id.clone(),
         }
-        .emit(&download_task.app);
+        .emit(app);
 
-        self.prepare(&download_task.app)
-            .await
-            .wrap_err("准备下载失败")?;
+        self.prepare(app).await.wrap_err("准备下载失败")?;
+
+        let progress_before_hook = self.clone();
+        app.get_plugin_manager()
+            .run_hook(HookContext::AfterPrepare(AfterPrepareContext::new(self)))
+            .await?;
+        if *self != progress_before_hook {
+            download_task.update_progress(|p| *p = self.clone());
+        }
 
         self.completed_ts = None; // 重置完成时间戳
         download_task.update_progress(|p| *p = self.clone());
@@ -216,35 +227,36 @@ impl DownloadProgress {
         std::fs::create_dir_all(&self.episode_dir)
             .wrap_err(format!("创建目录`{}`失败", self.episode_dir.display()))?;
 
-        let video_task = &self.video_task;
-        let audio_task = &self.audio_task;
-        let video_process_task = &self.video_process_task;
-        let danmaku_task = &self.danmaku_task;
-        let subtitle_task = &self.subtitle_task;
-        let cover_task = &self.cover_task;
-        let nfo_task = &self.nfo_task;
-        let json_task = &self.json_task;
-
         let mut player_info = None;
         let mut episode_info = None;
 
-        if !video_task.is_completed() && video_task.content_length != 0 {
-            video_task
+        if !self.video_task.is_completed() && self.video_task.content_length != 0 {
+            self.video_task
                 .process(download_task, self)
                 .await
                 .wrap_err("下载视频文件失败")?;
             tracing::debug!("视频下载任务完成");
         }
 
-        if !audio_task.is_completed() && audio_task.content_length != 0 {
-            audio_task
+        if !self.audio_task.is_completed() && self.audio_task.content_length != 0 {
+            self.audio_task
                 .process(download_task, self)
                 .await
                 .wrap_err("下载音频文件失败")?;
             tracing::debug!("音频下载任务完成");
         }
 
-        let video_process_task_is_completed = video_process_task.is_completed();
+        let progress_before_hook = self.clone();
+        app.get_plugin_manager()
+            .run_hook(HookContext::BeforeVideoProcess(
+                BeforeVideoProcessContext::new(self),
+            ))
+            .await?;
+        if *self != progress_before_hook {
+            download_task.update_progress(|p| *p = self.clone());
+        }
+
+        let video_process_task_is_completed = self.video_process_task.is_completed();
         if self.is_drm && !video_process_task_is_completed {
             download_task.update_progress(|p| {
                 p.video_process_task.skipped = true;
@@ -252,47 +264,47 @@ impl DownloadProgress {
             });
             tracing::debug!("受版权保护(DRM)，无法处理，已跳过视频处理任务");
         } else if !video_process_task_is_completed {
-            video_process_task
+            self.video_process_task
                 .process(download_task, self, &mut player_info)
                 .await
                 .wrap_err("视频处理失败")?;
             tracing::debug!("视频处理任务完成");
         }
 
-        if !danmaku_task.is_completed() {
-            danmaku_task
+        if !self.danmaku_task.is_completed() {
+            self.danmaku_task
                 .process(download_task, self)
                 .await
                 .wrap_err("下载弹幕失败")?;
             tracing::debug!("弹幕下载任务完成");
         }
 
-        if !subtitle_task.is_completed() {
-            subtitle_task
+        if !self.subtitle_task.is_completed() {
+            self.subtitle_task
                 .process(download_task, self, &mut player_info)
                 .await
                 .wrap_err("下载字幕失败")?;
             tracing::debug!("字幕下载任务完成");
         }
 
-        if !cover_task.is_completed() {
-            cover_task
+        if !self.cover_task.is_completed() {
+            self.cover_task
                 .process(download_task, self)
                 .await
                 .wrap_err("下载封面失败")?;
             tracing::debug!("封面下载任务完成");
         }
 
-        if !nfo_task.is_completed() {
-            nfo_task
+        if !self.nfo_task.is_completed() {
+            self.nfo_task
                 .process(download_task, self, &mut episode_info)
                 .await
                 .wrap_err("下载NFO失败")?;
             tracing::debug!("NFO下载任务完成");
         }
 
-        if !json_task.is_completed() {
-            json_task
+        if !self.json_task.is_completed() {
+            self.json_task
                 .process(download_task, self, &mut episode_info)
                 .await
                 .wrap_err("下载JSON元数据失败")?;
@@ -303,8 +315,17 @@ impl DownloadProgress {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .ok();
-        if completed_ts.is_some() {
-            download_task.update_progress(|p| p.completed_ts = completed_ts);
+        if let Some(completed_ts) = completed_ts {
+            self.completed_ts = Some(completed_ts);
+            download_task.update_progress(|p| p.completed_ts = Some(completed_ts));
+        }
+
+        let progress_before_hook = self.clone();
+        app.get_plugin_manager()
+            .run_hook(HookContext::OnCompleted(OnCompletedContext::new(self)))
+            .await?;
+        if *self != progress_before_hook {
+            download_task.update_progress(|p| *p = self.clone());
         }
 
         Ok(())
