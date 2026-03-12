@@ -8,6 +8,7 @@ import DownloadSettings from './components/DownloadSettings.vue'
 import FmtSettings from './components/FmtSettings.vue'
 import NetworkSettings from './components/NetworkSettings.vue'
 import AssDanmakuSettings from './components/AssDanmakuSettings.vue'
+import PluginSettings from './components/PluginSettings.vue'
 import { NButton, NDialog, NModal, NTabPane, NTabs, useMessage } from 'naive-ui'
 
 const store = useStore()
@@ -53,7 +54,7 @@ async function showConfigInFileManager() {
   <n-modal v-if="store.config !== undefined" v-model:show="showing">
     <n-dialog :showIcon="false" content-style="" @close="showing = false">
       <div class="flex flex-col gap-row-2">
-        <n-tabs class="h-full" v-model:value="currentTabName" type="line" size="small" animated>
+        <n-tabs class="h-full settings-tabs" v-model:value="currentTabName" type="line" size="small" animated>
           <n-tab-pane name="download_settings" tab="下载内容">
             <DownloadSettings />
           </n-tab-pane>
@@ -66,9 +67,18 @@ async function showConfigInFileManager() {
           <n-tab-pane name="network_settings" tab="网络">
             <NetworkSettings />
           </n-tab-pane>
+          <n-tab-pane name="plugin_settings" tab="插件">
+            <PluginSettings />
+          </n-tab-pane>
         </n-tabs>
 
-        <n-button class="ml-auto mt-2" size="small" @click="showConfigInFileManager">打开配置目录</n-button>
+        <n-button
+          v-if="currentTabName !== 'plugin_settings'"
+          class="ml-auto mt-2"
+          size="small"
+          @click="showConfigInFileManager">
+          打开配置目录
+        </n-button>
       </div>
     </n-dialog>
   </n-modal>
