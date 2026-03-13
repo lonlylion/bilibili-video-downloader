@@ -1,13 +1,15 @@
 <script setup lang="tsx">
-import { computed, defineComponent, onMounted, onUnmounted, ref, type PropType } from 'vue'
+import { computed, defineComponent, onMounted, onUnmounted, ref, useTemplateRef, type PropType } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { NButton, NCollapseTransition, NInputNumber, NSwitch, NTag, useMessage, NEmpty, NIcon } from 'naive-ui'
 import { commands, events, PluginInfo } from '../../../bindings.ts'
 import { PhPlusCircle } from '@phosphor-icons/vue'
 import { path } from '@tauri-apps/api'
 import { appDataDir } from '@tauri-apps/api/path'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const message = useMessage()
+const allowedPluginExtensions = new Set(['.dll', '.so', '.dylib'])
 
 const pluginInfos = ref<Map<string, PluginInfo>>(new Map())
 
@@ -15,6 +17,8 @@ const sortedPluginInfos = computed<PluginInfo[]>(() =>
   Array.from(pluginInfos.value.values()).sort((a, b) => b.priority - a.priority),
 )
 const expandedPluginIds = ref<Set<string>>(new Set())
+const dropZoneRef = useTemplateRef('dropZoneRef')
+const isDragOverDropZone = ref<boolean>(false)
 
 onMounted(async () => {
   const infos = await commands.getPluginInfos()
@@ -29,6 +33,7 @@ onMounted(async () => {
 })
 
 let unListenPluginEvent: (() => void) | undefined
+let unListenDragDropEvent: (() => void) | undefined
 onMounted(() => {
   events.pluginEvent
     .listen(({ payload: { event, data } }) => {
@@ -53,10 +58,96 @@ onMounted(() => {
     .then((unListenFn) => {
       unListenPluginEvent = unListenFn
     })
+  getCurrentWindow()
+    .onDragDropEvent(({ payload }) => {
+      if (payload.type === 'leave') {
+        isDragOverDropZone.value = false
+        return
+      }
+
+      if (payload.type === 'enter' || payload.type === 'over') {
+        isDragOverDropZone.value = isPointInDropZone(payload.position.x, payload.position.y)
+        return
+      }
+
+      const droppingOnDropZone = isPointInDropZone(payload.position.x, payload.position.y)
+      isDragOverDropZone.value = false
+      if (!droppingOnDropZone) {
+        return
+      }
+
+      addPluginsByPaths(payload.paths)
+    })
+    .then((unListenFn) => {
+      unListenDragDropEvent = unListenFn
+    })
 })
+
 onUnmounted(() => {
   unListenPluginEvent?.()
+  unListenDragDropEvent?.()
 })
+
+function getFileName(pluginPath: string): string {
+  const normalizedPath = pluginPath.replace(/\\/g, '/')
+  const parts = normalizedPath.split('/')
+  const filename = parts[parts.length - 1]
+  return filename === '' ? pluginPath : filename
+}
+
+function getFileExtension(pluginPath: string): string {
+  const filename = getFileName(pluginPath)
+  const dotIndex = filename.lastIndexOf('.')
+  if (dotIndex <= 0) {
+    return ''
+  }
+  return filename.slice(dotIndex).toLowerCase()
+}
+
+function isPluginDynamicLibrary(pluginPath: string): boolean {
+  return allowedPluginExtensions.has(getFileExtension(pluginPath))
+}
+
+function isPointInDropZone(rawX: number, rawY: number): boolean {
+  const dropZone = dropZoneRef.value
+  if (dropZone === null) {
+    return false
+  }
+
+  const rect = dropZone.getBoundingClientRect()
+  const dpr = window.devicePixelRatio || 1
+
+  const candidates: Array<[number, number]> = [[rawX, rawY]]
+  if (dpr !== 1) {
+    candidates.push([rawX / dpr, rawY / dpr])
+  }
+
+  return candidates.some(([x, y]) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
+}
+
+async function addPluginByPath(pluginPath: string) {
+  const result = await commands.addPlugin(pluginPath)
+  const filename = getFileName(pluginPath)
+
+  if (result.status === 'error') {
+    console.error(result.error)
+    return
+  }
+
+  message.success(`添加插件成功: ${filename}`)
+}
+
+async function addPluginsByPaths(pluginPaths: string[]) {
+  for (const pluginPath of pluginPaths) {
+    const filename = getFileName(pluginPath)
+    if (!isPluginDynamicLibrary(pluginPath)) {
+      message.warning(`跳过非插件文件: ${filename}`)
+      continue
+    }
+
+    await addPluginByPath(pluginPath)
+  }
+}
 
 async function addPlugin() {
   const selectedPath = await open({
@@ -68,13 +159,7 @@ async function addPlugin() {
     return
   }
 
-  const result = await commands.addPlugin(selectedPath)
-  if (result.status === 'error') {
-    console.error(result.error)
-    return
-  }
-
-  message.success('添加插件成功')
+  await addPluginByPath(selectedPath)
 }
 
 async function showPluginConfigInFileManager() {
@@ -282,17 +367,23 @@ const PluginCard = defineComponent({
       <PluginCard v-for="pluginInfo in sortedPluginInfos" :key="pluginInfo.path" :plugin-info="pluginInfo" />
     </div>
 
-    <div class="flex mt-2">
-      <n-button class="mr-auto" size="small" type="primary" @click="addPlugin">
-        <template #icon>
-          <n-icon size="20">
-            <PhPlusCircle />
-          </n-icon>
-        </template>
-        添加插件
-      </n-button>
+    <div class="mt-2 flex items-center gap-2">
+      <div
+        ref="dropZoneRef"
+        class="flex items-center gap-2 rounded-md border border-dashed px-2 py-1 transition-colors"
+        :class="isDragOverDropZone ? 'border-sky-4 bg-sky-1/70' : 'border-gray-3 bg-transparent'">
+        <n-button size="small" type="primary" @click="addPlugin">
+          <template #icon>
+            <n-icon size="20">
+              <PhPlusCircle />
+            </n-icon>
+          </template>
+          添加插件
+        </n-button>
+        <span class="text-xs text-gray-6">也可以拖入此处导入</span>
+      </div>
 
-      <n-button size="small" @click="showPluginConfigInFileManager">打开配置目录</n-button>
+      <n-button class="ml-auto" size="small" @click="showPluginConfigInFileManager">打开配置目录</n-button>
     </div>
   </div>
 </template>
