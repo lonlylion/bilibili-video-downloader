@@ -8,8 +8,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "format": "prettier . -w && cd src-tauri && cargo fmt --all",
-    "check": "prettier . --check && eslint -c eslint.config.js --max-warnings=0 src && vue-tsc --noEmit && cd src-tauri && cargo clippy -- -D warnings"
+    "format": "prettier . -w && cargo fmt --all --manifest-path src-tauri/Cargo.toml && cargo fmt --all --manifest-path src-plugin/Cargo.toml && cargo fmt --all --manifest-path src-plugin/examples/Cargo.toml",
+    "check": "prettier . --check && eslint -c eslint.config.js --max-warnings=0 src && vue-tsc --noEmit && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings && cargo clippy --manifest-path src-plugin/Cargo.toml --workspace -- -D warnings && cargo clippy --manifest-path src-plugin/examples/Cargo.toml --workspace -- -D warnings"
   },
   "dependencies": {
     "@phosphor-icons/vue": "^2.2.1",
