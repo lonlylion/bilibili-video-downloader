@@ -33,7 +33,14 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Check Rust formatting
-        run: |
-          cd src-tauri
-          cargo fmt --all -- --check
+      - name: Check Tauri Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Check Plugin Rust formatting
+        working-directory: src-plugin
+        run: cargo fmt --all -- --check
+
+      - name: Check Plugin Examples Rust formatting
+        working-directory: src-plugin/examples
+        run: cargo fmt --all -- --check

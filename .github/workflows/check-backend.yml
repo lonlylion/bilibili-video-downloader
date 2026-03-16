@@ -19,6 +19,7 @@ jobs:
           filters: |
             backend:
               - 'src-tauri/**'
+              - 'src-plugin/**'
               - '.github/workflows/check-backend.yml'
 
       - name: Skip backend checks when unchanged
@@ -39,7 +40,10 @@ jobs:
         if: steps.changes.outputs.backend == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: |
+            src-tauri -> target
+            src-plugin -> target
+            src-plugin/examples -> target
 
       - name: Install dependencies
         if: steps.changes.outputs.backend == 'true'
@@ -51,3 +55,13 @@ jobs:
         if: steps.changes.outputs.backend == 'true'
         working-directory: src-tauri
         run: cargo clippy -- -D warnings
+
+      - name: Run Plugin Clippy
+        if: steps.changes.outputs.backend == 'true'
+        working-directory: src-plugin
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run Plugin Examples Clippy
+        if: steps.changes.outputs.backend == 'true'
+        working-directory: src-plugin/examples
+        run: cargo clippy --workspace --all-targets -- -D warnings
