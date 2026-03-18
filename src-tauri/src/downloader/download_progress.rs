@@ -1,22 +1,32 @@
 use std::{
     path::PathBuf,
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{anyhow, Context};
+use eyre::{OptionExt, WrapErr, eyre};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager};
+use tauri_specta::Event;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
     config::Config,
-    downloader::tasks::{
-        audio_task::AudioTask, cover_task::CoverTask, danmaku_task::DanmakuTask,
-        json_task::JsonTask, nfo_task::NfoTask, subtitle_task::SubtitleTask,
-        video_process_task::VideoProcessTask, video_task::VideoTask,
+    downloader::{
+        download_task::DownloadTask,
+        tasks::{
+            audio_task::AudioTask, cover_task::CoverTask, danmaku_task::DanmakuTask,
+            json_task::JsonTask, nfo_task::NfoTask, subtitle_task::SubtitleTask,
+            video_process_task::VideoProcessTask, video_task::VideoTask,
+        },
     },
+    events::DownloadEvent,
     extensions::AppHandleExt,
+    plugin::hook_context::{
+        AfterPrepareContext, BeforeVideoProcessContext, HookContext, OnCompletedContext,
+    },
     types::{
         audio_quality::AudioQuality,
         bangumi_info::BangumiInfo,
@@ -60,15 +70,18 @@ pub struct DownloadProgress {
     pub json_task: JsonTask,
     pub create_ts: u64,
     pub completed_ts: Option<u64>,
+    pub is_drm: bool,
+    pub is_preview: bool,
 }
 
 impl DownloadProgress {
+    #[instrument(level = "error", skip_all)]
     pub fn from_normal(
         app: &AppHandle,
         info: &NormalInfo,
         aid: i64,
         cid: Option<i64>,
-    ) -> anyhow::Result<Vec<Self>> {
+    ) -> eyre::Result<Vec<Self>> {
         let config = app.get_config().read().clone();
 
         if let Some(ugc_season) = &info.ugc_season {
@@ -79,10 +92,11 @@ impl DownloadProgress {
     }
 
     #[allow(clippy::cast_possible_wrap)]
-    pub fn from_bangumi(app: &AppHandle, info: &BangumiInfo, ep_id: i64) -> anyhow::Result<Self> {
+    #[instrument(level = "error", skip_all)]
+    pub fn from_bangumi(app: &AppHandle, info: &BangumiInfo, ep_id: i64) -> eyre::Result<Self> {
         let (episode, episode_order) = info.get_episode_with_order(ep_id)?;
         let Some(duration) = episode.duration else {
-            return Err(anyhow!("找不到ep_id为`{ep_id}`的番剧的时长"));
+            return Err(eyre!("duration为None"));
         };
         // 将毫秒转换为秒
         let duration = duration / 1000;
@@ -90,7 +104,6 @@ impl DownloadProgress {
         let config = app.get_config().read().clone();
 
         let tasks = Tasks::new(&config, &episode.cover);
-
         let (up_name, up_uid, up_avatar) = if let Some(up_info) = &info.up_info {
             (
                 Some(up_info.uname.clone()),
@@ -103,7 +116,7 @@ impl DownloadProgress {
 
         let create_ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
-        let mut progress = Self {
+        let progress = Self {
             task_id: Uuid::new_v4().to_string(),
             episode_type: EpisodeType::Bangumi,
             aid: episode.aid,
@@ -132,21 +145,20 @@ impl DownloadProgress {
             json_task: tasks.json,
             create_ts,
             completed_ts: None,
+            is_drm: false,
+            is_preview: false,
         };
-
-        progress
-            .update_fmt_fields(&config)
-            .context("更新需要格式化的字段失败")?;
 
         Ok(progress)
     }
 
-    pub fn from_cheese(app: &AppHandle, info: &CheeseInfo, ep_id: i64) -> anyhow::Result<Self> {
+    #[instrument(level = "error", skip_all)]
+    pub fn from_cheese(app: &AppHandle, info: &CheeseInfo, ep_id: i64) -> eyre::Result<Self> {
         let episode = info
             .episodes
             .iter()
             .find(|ep| ep.id == ep_id)
-            .context(format!("找不到ep_id为`{ep_id}`的课程"))?;
+            .ok_or_eyre("找不到ep_id对应的课程")?;
 
         let config = app.get_config().read().clone();
 
@@ -154,7 +166,7 @@ impl DownloadProgress {
 
         let create_ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
-        let mut progress = Self {
+        let progress = Self {
             task_id: Uuid::new_v4().to_string(),
             episode_type: EpisodeType::Cheese,
             aid: episode.aid,
@@ -183,23 +195,153 @@ impl DownloadProgress {
             json_task: tasks.json,
             create_ts,
             completed_ts: None,
+            is_drm: false,
+            is_preview: false,
         };
-
-        progress
-            .update_fmt_fields(&config)
-            .context("更新需要格式化的字段失败")?;
 
         Ok(progress)
     }
 
-    pub async fn prepare(&mut self, app: &AppHandle) -> anyhow::Result<()> {
+    #[instrument(level = "error", skip_all)]
+    #[allow(clippy::too_many_lines)]
+    pub async fn process(&mut self, download_task: &Arc<DownloadTask>) -> eyre::Result<()> {
+        let app = &download_task.app;
+        let _ = DownloadEvent::ProgressPreparing {
+            task_id: self.task_id.clone(),
+        }
+        .emit(app);
+
+        self.prepare(app).await.wrap_err("准备下载失败")?;
+
+        let progress_before_hook = self.clone();
+        app.get_plugin_manager()
+            .run_hook(HookContext::AfterPrepare(AfterPrepareContext::new(self)))
+            .await?;
+        if *self != progress_before_hook {
+            download_task.update_progress(|p| *p = self.clone());
+        }
+
+        self.completed_ts = None; // 重置完成时间戳
+        download_task.update_progress(|p| *p = self.clone());
+
+        std::fs::create_dir_all(&self.episode_dir)
+            .wrap_err(format!("创建目录`{}`失败", self.episode_dir.display()))?;
+
+        let mut player_info = None;
+        let mut episode_info = None;
+
+        if !self.video_task.is_completed() && self.video_task.content_length != 0 {
+            self.video_task
+                .process(download_task, self)
+                .await
+                .wrap_err("下载视频文件失败")?;
+            tracing::debug!("视频下载任务完成");
+        }
+
+        if !self.audio_task.is_completed() && self.audio_task.content_length != 0 {
+            self.audio_task
+                .process(download_task, self)
+                .await
+                .wrap_err("下载音频文件失败")?;
+            tracing::debug!("音频下载任务完成");
+        }
+
+        let progress_before_hook = self.clone();
+        app.get_plugin_manager()
+            .run_hook(HookContext::BeforeVideoProcess(
+                BeforeVideoProcessContext::new(self),
+            ))
+            .await?;
+        if *self != progress_before_hook {
+            download_task.update_progress(|p| *p = self.clone());
+        }
+
+        let video_process_task_is_completed = self.video_process_task.is_completed();
+        if self.is_drm && !video_process_task_is_completed {
+            download_task.update_progress(|p| {
+                p.video_process_task.skipped = true;
+                p.video_process_task.completed = true;
+            });
+            tracing::debug!("受版权保护(DRM)，无法处理，已跳过视频处理任务");
+        } else if !video_process_task_is_completed {
+            self.video_process_task
+                .process(download_task, self, &mut player_info)
+                .await
+                .wrap_err("视频处理失败")?;
+            tracing::debug!("视频处理任务完成");
+        }
+
+        if !self.danmaku_task.is_completed() {
+            self.danmaku_task
+                .process(download_task, self)
+                .await
+                .wrap_err("下载弹幕失败")?;
+            tracing::debug!("弹幕下载任务完成");
+        }
+
+        if !self.subtitle_task.is_completed() {
+            self.subtitle_task
+                .process(download_task, self, &mut player_info)
+                .await
+                .wrap_err("下载字幕失败")?;
+            tracing::debug!("字幕下载任务完成");
+        }
+
+        if !self.cover_task.is_completed() {
+            self.cover_task
+                .process(download_task, self)
+                .await
+                .wrap_err("下载封面失败")?;
+            tracing::debug!("封面下载任务完成");
+        }
+
+        if !self.nfo_task.is_completed() {
+            self.nfo_task
+                .process(download_task, self, &mut episode_info)
+                .await
+                .wrap_err("下载NFO失败")?;
+            tracing::debug!("NFO下载任务完成");
+        }
+
+        if !self.json_task.is_completed() {
+            self.json_task
+                .process(download_task, self, &mut episode_info)
+                .await
+                .wrap_err("下载JSON元数据失败")?;
+            tracing::debug!("JSON元数据下载任务完成");
+        }
+
+        let completed_ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .ok();
+        if let Some(completed_ts) = completed_ts {
+            self.completed_ts = Some(completed_ts);
+            download_task.update_progress(|p| p.completed_ts = Some(completed_ts));
+        }
+
+        let progress_before_hook = self.clone();
+        app.get_plugin_manager()
+            .run_hook(HookContext::OnCompleted(OnCompletedContext::new(self)))
+            .await?;
+        if *self != progress_before_hook {
+            download_task.update_progress(|p| *p = self.clone());
+        }
+
+        Ok(())
+    }
+
+    #[instrument(level = "error", skip_all)]
+    async fn prepare(&mut self, app: &AppHandle) -> eyre::Result<()> {
         let video_selected = self.video_task.selected;
         let video_completed = self.video_task.completed;
         let audio_selected = self.audio_task.selected;
         let audio_completed = self.audio_task.completed;
 
         if (!video_selected && !audio_selected) || (video_completed && audio_completed) {
-            // 如果视频和音频都没有选中，或者都已经完成，则不需要准备
+            // 如果视频和音频都没有选中，或者都已经完成，则更新需要格式化的字段就返回
+            self.update_fmt_fields(app)
+                .wrap_err("更新需要格式化的字段失败")?;
             return Ok(());
         }
 
@@ -208,12 +350,14 @@ impl DownloadProgress {
         match self.episode_type {
             EpisodeType::Normal => {
                 let Some(bvid) = &self.bvid else {
-                    return Err(anyhow!("progress中的bvid为None，无法获取视频链接"));
+                    return Err(eyre!("progress中的bvid为None，无法获取视频链接"));
                 };
                 let media_url = bili_client
                     .get_normal_url(bvid, self.cid)
                     .await
-                    .context("获取视频链接失败")?;
+                    .wrap_err("获取视频链接失败")?;
+
+                self.is_preview = !media_url.durl.is_empty() && media_url.dash.video.is_empty();
 
                 if video_selected && !video_completed {
                     // 如果视频被选中且未完成，则准备视频任务
@@ -222,14 +366,16 @@ impl DownloadProgress {
 
                 if audio_selected && !audio_completed {
                     // 如果音频被选中且未完成，则准备音频任务
-                    self.audio_task.prepare_normal(app, &media_url).await?;
+                    self.audio_task.prepare_normal(app, &media_url).await;
                 }
             }
             EpisodeType::Bangumi => {
                 let media_url = bili_client
                     .get_bangumi_url(self.cid)
                     .await
-                    .context("获取番剧视频链接失败")?;
+                    .wrap_err("获取番剧视频链接失败")?;
+
+                self.is_preview = media_url.is_preview != 0;
 
                 if video_selected && !video_completed {
                     // 如果视频被选中且未完成，则准备视频任务
@@ -238,17 +384,20 @@ impl DownloadProgress {
 
                 if audio_selected && !audio_completed {
                     // 如果音频被选中且未完成，则准备音频任务
-                    self.audio_task.prepare_bangumi(app, &media_url).await?;
+                    self.audio_task.prepare_bangumi(app, &media_url).await;
                 }
             }
             EpisodeType::Cheese => {
                 let Some(ep_id) = self.ep_id else {
-                    return Err(anyhow!("progress中的ep_id为None，无法获取课程视频链接"));
+                    return Err(eyre!("progress中的ep_id为None，无法获取课程视频链接"));
                 };
                 let media_url = bili_client
                     .get_cheese_url(ep_id)
                     .await
-                    .context("获取课程视频链接失败")?;
+                    .wrap_err("获取课程视频链接失败")?;
+
+                self.is_drm = media_url.is_drm;
+                self.is_preview = media_url.is_preview != 0;
 
                 if video_selected && !video_completed {
                     // 如果视频被选中且未完成，则准备视频任务
@@ -257,18 +406,23 @@ impl DownloadProgress {
 
                 if audio_selected && !audio_completed {
                     // 如果音频被选中且未完成，则准备音频任务
-                    self.audio_task.prepare_cheese(app, &media_url).await?;
+                    self.audio_task.prepare_cheese(app, &media_url).await;
                 }
             }
         }
 
+        self.update_fmt_fields(app)
+            .wrap_err("更新需要格式化的字段失败")?;
+
         Ok(())
     }
 
-    fn update_fmt_fields(&mut self, config: &Config) -> anyhow::Result<()> {
+    #[instrument(level = "error", skip_all)]
+    fn update_fmt_fields(&mut self, app: &AppHandle) -> eyre::Result<()> {
         let fmt_params = self.create_fmt_params();
 
-        let (episode_dir, filename) = fmt_params.get_episode_dir_and_filename(config)?;
+        let config = app.get_config().read().clone();
+        let (episode_dir, filename) = fmt_params.get_episode_dir_and_filename(&config)?;
 
         self.episode_dir = episode_dir;
         self.filename = filename;
@@ -294,10 +448,14 @@ impl DownloadProgress {
             up_name: self.up_name.clone(),
             up_uid: self.up_uid,
             create_ts: self.create_ts,
+            video_quality: self.video_task.video_quality,
+            codec_type: self.video_task.codec_type,
+            audio_quality: self.audio_task.audio_quality,
         }
     }
 
-    pub fn save(&self, app: &AppHandle, allow_create: bool) -> anyhow::Result<()> {
+    #[instrument(level = "error", skip_all)]
+    pub fn save(&self, app: &AppHandle, allow_create: bool) -> eyre::Result<()> {
         let progress = self.clone();
         let file_name = format!("{}.json", progress.task_id);
 
@@ -330,29 +488,22 @@ impl DownloadProgress {
     pub fn mark_uncompleted(&mut self) {
         self.video_task.mark_uncompleted();
         self.audio_task.mark_uncompleted();
-        self.video_process_task.completed = false;
-        self.danmaku_task.completed = false;
-        self.subtitle_task.completed = false;
-        self.cover_task.completed = false;
-        self.nfo_task.completed = false;
-        self.json_task.completed = false;
-    }
-
-    pub fn get_ids_string(&self) -> String {
-        let aid = self.aid;
-        let bvid = self.bvid.as_deref().unwrap_or("None");
-        let cid = self.cid;
-        let ep_id = self.ep_id.map_or("None".to_string(), |id| id.to_string());
-        format!("aid: {aid}, bvid: {bvid}, cid: {cid}, ep_id: {ep_id}")
+        self.video_process_task.mark_uncompleted();
+        self.danmaku_task.mark_uncompleted();
+        self.subtitle_task.mark_uncompleted();
+        self.cover_task.mark_uncompleted();
+        self.nfo_task.mark_uncompleted();
+        self.json_task.mark_uncompleted();
     }
 }
 
 #[allow(clippy::too_many_lines)]
+#[instrument(level = "error", skip_all)]
 fn create_normal_progresses_for_single(
     info: &NormalInfo,
     cid: Option<i64>,
     config: &Config,
-) -> anyhow::Result<Vec<DownloadProgress>> {
+) -> eyre::Result<Vec<DownloadProgress>> {
     let tasks = Tasks::new(config, &info.pic);
 
     let create_ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -360,9 +511,9 @@ fn create_normal_progresses_for_single(
     if let Some(cid) = cid {
         // 如果有cid，则说明是要下载单个分P
         let Some(page) = info.pages.iter().find(|p| p.cid == cid) else {
-            return Err(anyhow!("找不到cid为`{cid}`的分P"));
+            return Err(eyre!("找不到cid对应的分P"));
         };
-        let mut progress = DownloadProgress {
+        let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),
             episode_type: EpisodeType::Normal,
             aid: info.aid,
@@ -391,18 +542,16 @@ fn create_normal_progresses_for_single(
             json_task: tasks.json,
             create_ts,
             completed_ts: None,
+            is_drm: false,
+            is_preview: false,
         };
-
-        progress
-            .update_fmt_fields(config)
-            .context("更新需要格式化的字段失败")?;
 
         return Ok(vec![progress]);
     }
 
     if info.pages.len() == 1 {
         // 如果只有一个分P，则直接创建一个progress
-        let mut progress = DownloadProgress {
+        let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),
             episode_type: EpisodeType::Normal,
             aid: info.aid,
@@ -431,18 +580,16 @@ fn create_normal_progresses_for_single(
             json_task: tasks.json,
             create_ts,
             completed_ts: None,
+            is_drm: false,
+            is_preview: false,
         };
-
-        progress
-            .update_fmt_fields(config)
-            .context("更新需要格式化的字段失败")?;
 
         return Ok(vec![progress]);
     }
     // 如果有多个分P，则为每个分P创建一个progress
     let mut progresses = Vec::new();
     for page in &info.pages {
-        let mut progress = DownloadProgress {
+        let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),
             episode_type: EpisodeType::Normal,
             aid: info.aid,
@@ -471,11 +618,9 @@ fn create_normal_progresses_for_single(
             json_task: tasks.json.clone(),
             create_ts,
             completed_ts: None,
+            is_drm: false,
+            is_preview: false,
         };
-
-        progress
-            .update_fmt_fields(config)
-            .context("更新需要格式化的字段失败")?;
 
         progresses.push(progress);
     }
@@ -483,18 +628,19 @@ fn create_normal_progresses_for_single(
 }
 
 #[allow(clippy::too_many_lines)]
+#[instrument(level = "error", skip_all)]
 fn create_normal_progresses_for_season(
     ugc_season: &UgcSeason,
     info: &NormalInfo,
     aid: i64,
     cid: Option<i64>,
     config: &Config,
-) -> anyhow::Result<Vec<DownloadProgress>> {
+) -> eyre::Result<Vec<DownloadProgress>> {
     let section_index = ugc_season
         .sections
         .iter()
         .position(|s| s.episodes.iter().any(|e| e.aid == aid))
-        .context(format!("找不到含有aid为`{aid}`的ep的section"))?;
+        .ok_or_eyre("找不到含有对应aid的section")?;
     let section = &ugc_season.sections[section_index];
     #[allow(clippy::cast_possible_wrap)]
     let (ep, episode_order) = section
@@ -503,7 +649,7 @@ fn create_normal_progresses_for_season(
         .enumerate()
         .map(|(i, e)| (e, i as i64 + 1))
         .find(|(e, _)| e.aid == aid)
-        .context(format!("在section中找不到aid为`{aid}`的ep"))?;
+        .ok_or_eyre("在section中找不到aid对应的ep")?;
 
     let tasks = Tasks::new(config, &ep.arc.pic);
 
@@ -512,9 +658,9 @@ fn create_normal_progresses_for_season(
     if let Some(cid) = cid {
         // 如果有cid，则说明是要下载单个分P
         let Some(page) = ep.pages.iter().find(|p| p.cid == cid) else {
-            return Err(anyhow!("找不到cid为`{cid}`的分P"));
+            return Err(eyre!("找不到cid对应的分P"));
         };
-        let mut progress = DownloadProgress {
+        let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),
             episode_type: EpisodeType::Normal,
             aid: ep.aid,
@@ -543,18 +689,16 @@ fn create_normal_progresses_for_season(
             json_task: tasks.json,
             create_ts,
             completed_ts: None,
+            is_drm: false,
+            is_preview: false,
         };
-
-        progress
-            .update_fmt_fields(config)
-            .context("更新需要格式化的字段失败")?;
 
         return Ok(vec![progress]);
     }
 
     if ep.pages.len() == 1 {
         // 如果只有一个分P，则直接创建一个progress
-        let mut progress = DownloadProgress {
+        let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),
             episode_type: EpisodeType::Normal,
             aid: ep.aid,
@@ -583,11 +727,9 @@ fn create_normal_progresses_for_season(
             json_task: tasks.json,
             create_ts,
             completed_ts: None,
+            is_drm: false,
+            is_preview: false,
         };
-
-        progress
-            .update_fmt_fields(config)
-            .context("更新需要格式化的字段失败")?;
 
         return Ok(vec![progress]);
     }
@@ -595,7 +737,7 @@ fn create_normal_progresses_for_season(
     // 如果有多个分P，则为每个分P创建一个progress
     let mut progresses = Vec::new();
     for page in &ep.pages {
-        let mut progress = DownloadProgress {
+        let progress = DownloadProgress {
             task_id: Uuid::new_v4().to_string(),
             episode_type: EpisodeType::Normal,
             aid: ep.aid,
@@ -624,11 +766,9 @@ fn create_normal_progresses_for_season(
             json_task: tasks.json.clone(),
             create_ts,
             completed_ts: None,
+            is_drm: false,
+            is_preview: false,
         };
-
-        progress
-            .update_fmt_fields(config)
-            .context("更新需要格式化的字段失败")?;
 
         progresses.push(progress);
     }
@@ -656,6 +796,7 @@ impl Tasks {
             content_length: 0,
             chunks: Vec::new(),
             completed: false,
+            skipped: false,
         };
 
         let audio = AudioTask {
@@ -665,6 +806,7 @@ impl Tasks {
             content_length: 0,
             chunks: Vec::new(),
             completed: false,
+            skipped: false,
         };
 
         let video_process = VideoProcessTask {
@@ -672,6 +814,7 @@ impl Tasks {
             embed_chapter_selected: config.embed_chapter,
             embed_skip_selected: config.embed_skip,
             completed: false,
+            skipped: false,
         };
 
         let danmaku = DanmakuTask {
@@ -679,6 +822,7 @@ impl Tasks {
             ass_selected: config.download_ass_danmaku,
             json_selected: config.download_json_danmaku,
             completed: false,
+            skipped: false,
         };
 
         let subtitle = SubtitleTask {
@@ -695,6 +839,7 @@ impl Tasks {
         let nfo = NfoTask {
             selected: config.download_nfo,
             completed: false,
+            skipped: false,
         };
 
         let json = JsonTask {

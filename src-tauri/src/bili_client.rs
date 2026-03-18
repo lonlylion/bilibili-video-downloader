@@ -1,30 +1,31 @@
 use std::time::Duration;
 
-use anyhow::{anyhow, Context};
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use bytes::Bytes;
+use eyre::{OptionExt, WrapErr, eyre};
 use parking_lot::RwLock;
 use prost::Message;
 use reqwest::{Client, StatusCode};
 use reqwest_middleware::ClientWithMiddleware;
-use reqwest_retry::{policies::ExponentialBackoff, Jitter, RetryTransientMiddleware};
+use reqwest_retry::{Jitter, RetryTransientMiddleware, policies::ExponentialBackoff};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{
-    http::{HeaderMap, HeaderValue},
     AppHandle,
+    http::{HeaderMap, HeaderValue},
 };
 use tokio::task::JoinSet;
+use tracing::{Instrument, instrument};
 
 use crate::{
     config::ProxyMode,
-    extensions::{AnyhowErrorToStringChain, AppHandleExt},
+    extensions::{AppHandleExt, EyreReportToMessage},
     protobuf::DmSegMobileReply,
     types::{
         bangumi_follow_info::BangumiFollowInfo, bangumi_info::BangumiInfo,
-        bangumi_media_url::BangumiMediaUrl, cheese_info::CheeseInfo,
-        cheese_media_url::CheeseMediaUrl, fav_folders::FavFolders, fav_info::FavInfo,
-        get_bangumi_follow_info_params::GetBangumiFollowInfoParams,
+        bangumi_media_url::BangumiMediaUrl, bangumi_media_url_v2::BangumiMediaUrlV2,
+        cheese_info::CheeseInfo, cheese_media_url::CheeseMediaUrl, fav_folders::FavFolders,
+        fav_info::FavInfo, get_bangumi_follow_info_params::GetBangumiFollowInfoParams,
         get_bangumi_info_params::GetBangumiInfoParams, get_cheese_info_params::GetCheeseInfoParams,
         get_fav_info_params::GetFavInfoParams, get_history_info_params::GetHistoryInfoParams,
         get_normal_info_params::GetNormalInfoParams,
@@ -74,7 +75,8 @@ impl BiliClient {
         *self.content_length_client.write() = content_length_client;
     }
 
-    pub async fn generate_qrcode(&self) -> anyhow::Result<QrcodeData> {
+    #[instrument(level = "error", skip_all)]
+    pub async fn generate_qrcode(&self) -> eyre::Result<QrcodeData> {
         // 发送生成二维码请求
         let request = self
             .api_client
@@ -85,28 +87,29 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为二维码数据
         let data_str = data.to_string();
         let qrcode_data: QrcodeData = serde_json::from_str(&data_str)
-            .context(format!("将data解析为QrcodeData失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为QrcodeData失败: {data_str}"))?;
 
         Ok(qrcode_data)
     }
 
-    pub async fn get_qrcode_status(&self, qrcode_key: &str) -> anyhow::Result<QrcodeStatus> {
+    #[instrument(level = "error", skip_all)]
+    pub async fn get_qrcode_status(&self, qrcode_key: &str) -> eyre::Result<QrcodeStatus> {
         // 发送获取二维码状态请求
         let params = json!({"qrcode_key": qrcode_key});
         let request = self
@@ -119,30 +122,31 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为二维码状态
         let data_str = data.to_string();
         let qrcode_status: QrcodeStatus = serde_json::from_str(&data_str)
-            .context(format!("将data解析为QrcodeStatus失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为QrcodeStatus失败: {data_str}"))?;
         if ![0, 86101, 86090, 86038].contains(&qrcode_status.code) {
-            return Err(anyhow!("预料之外的二维码code: {qrcode_status:?}"));
+            return Err(eyre!("预料之外的二维码code: {qrcode_status:?}"));
         }
         Ok(qrcode_status)
     }
 
-    pub async fn get_user_info(&self, sessdata: &str) -> anyhow::Result<UserInfo> {
+    #[instrument(level = "error", skip_all)]
+    pub async fn get_user_info(&self, sessdata: &str) -> eyre::Result<UserInfo> {
         // 发送获取用户信息的请求
         let request = self
             .api_client
@@ -154,30 +158,31 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code == -101 {
-            return Err(anyhow!("cookie错误或已过期，请重新登录: {bili_resp:?}"));
+            return Err(eyre!("cookie错误或已过期，请重新登录: {bili_resp:?}"));
         } else if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为UserInfo
         let data_str = data.to_string();
         let user_info: UserInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为UserInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为UserInfo失败: {data_str}"))?;
 
         Ok(user_info)
     }
 
-    pub async fn get_normal_info(&self, params: GetNormalInfoParams) -> anyhow::Result<NormalInfo> {
+    #[instrument(level = "error", skip_all, fields(bvid = params.get_bvid(), aid = params.get_aid()))]
+    pub async fn get_normal_info(&self, params: GetNormalInfoParams) -> eyre::Result<NormalInfo> {
         use GetNormalInfoParams::{Aid, Bvid};
         let params = match params {
             Bvid(bvid) => json!({"bvid": bvid}),
@@ -195,31 +200,32 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为NormalInfo
         let data_str = data.to_string();
         let normal_info: NormalInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为NormalInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为NormalInfo失败: {data_str}"))?;
 
         Ok(normal_info)
     }
 
+    #[instrument(level = "error", skip_all, fields(ep_id = params.get_ep_id(), season_id = params.get_season_id()))]
     pub async fn get_bangumi_info(
         &self,
         params: GetBangumiInfoParams,
-    ) -> anyhow::Result<BangumiInfo> {
+    ) -> eyre::Result<BangumiInfo> {
         use GetBangumiInfoParams::{EpId, SeasonId};
         let params = match params {
             EpId(ep_id) => json!({"ep_id": ep_id}),
@@ -237,28 +243,29 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为BangumiInfo
         let data_str = data.to_string();
         let bangumi_info: BangumiInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为BangumiInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为BangumiInfo失败: {data_str}"))?;
 
         Ok(bangumi_info)
     }
 
-    pub async fn get_cheese_info(&self, params: GetCheeseInfoParams) -> anyhow::Result<CheeseInfo> {
+    #[instrument(level = "error", skip_all, fields(ep_id = params.get_ep_id(), season_id = params.get_season_id()))]
+    pub async fn get_cheese_info(&self, params: GetCheeseInfoParams) -> eyre::Result<CheeseInfo> {
         use GetCheeseInfoParams::{EpId, SeasonId};
         let params = match params {
             EpId(ep_id) => json!({"ep_id": ep_id}),
@@ -276,31 +283,32 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为CheeseInfo
         let data_str = data.to_string();
         let cheese_info: CheeseInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为CheeseInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为CheeseInfo失败: {data_str}"))?;
 
         Ok(cheese_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_user_video_info(
         &self,
         params: GetUserVideoInfoParams,
-    ) -> anyhow::Result<UserVideoInfo> {
+    ) -> eyre::Result<UserVideoInfo> {
         const DM_IMG_INTER: &str = r#"{"ds":[],"wh":[0,0,0],"of":[0,0,0]}"#;
 
         fn random_base64() -> String {
@@ -337,28 +345,29 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为UserVideoInfo
         let data_str = data.to_string();
         let user_video_info: UserVideoInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为UserVideoInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为UserVideoInfo失败: {data_str}"))?;
 
         Ok(user_video_info)
     }
 
-    pub async fn get_normal_url(&self, bvid: &str, cid: i64) -> anyhow::Result<NormalMediaUrl> {
+    #[instrument(level = "error", skip_all, fields(bvid = bvid, cid = cid))]
+    pub async fn get_normal_url(&self, bvid: &str, cid: i64) -> eyre::Result<NormalMediaUrl> {
         let params = json!({
             "bvid": bvid,
             "cid": cid,
@@ -377,32 +386,44 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为NormalMediaUrl
         let data_str = data.to_string();
         let media_url: NormalMediaUrl = serde_json::from_str(&data_str)
-            .context(format!("将data解析为NormalMediaUrl失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为NormalMediaUrl失败: {data_str}"))?;
 
         Ok(media_url)
     }
 
-    pub async fn get_bangumi_url(&self, cid: i64) -> anyhow::Result<BangumiMediaUrl> {
+    #[instrument(level = "error", skip_all, fields(cid = cid))]
+    pub async fn get_bangumi_url(&self, cid: i64) -> eyre::Result<BangumiMediaUrl> {
+        let media_url_v2 = self.get_bangumi_url_v2(cid).await?;
+        if media_url_v2.video_info.is_drm {
+            self.get_bangumi_url_v1(cid).await
+        } else {
+            Ok(media_url_v2.video_info)
+        }
+    }
+
+    #[instrument(level = "error", skip_all, fields(cid = cid))]
+    async fn get_bangumi_url_v1(&self, cid: i64) -> eyre::Result<BangumiMediaUrl> {
         let params = json!({
             "cid": cid,
             "qn": 127,
             "fnval": 4048,
+            "drm_tech_type": 2,
         });
         // 发送获取番剧url的请求
         let request = self
@@ -416,36 +437,80 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code == -10403 {
-            return Err(anyhow!(
-                "地区限制，请使用代理或切换线路后重试: {bili_resp:?}"
-            ));
+            return Err(eyre!("地区限制，请使用代理或切换线路后重试: {bili_resp:?}"));
         } else if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为BangumiMediaUrl
         let data_str = data.to_string();
         let media_url: BangumiMediaUrl = serde_json::from_str(&data_str)
-            .context(format!("将data解析为BangumiMediaUrl失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为BangumiMediaUrl失败: {data_str}"))?;
 
         Ok(media_url)
     }
 
-    pub async fn get_cheese_url(&self, ep_id: i64) -> anyhow::Result<CheeseMediaUrl> {
+    #[instrument(level = "error", skip_all, fields(cid = cid))]
+    async fn get_bangumi_url_v2(&self, cid: i64) -> eyre::Result<BangumiMediaUrlV2> {
+        let params = json!({
+            "cid": cid,
+            "qn": 127,
+            "fnval": 4048,
+            "drm_tech_type": 2,
+            "from_client": "BROWSER",
+        });
+        // 发送获取番剧url的请求
+        let request = self
+            .api_client
+            .read()
+            .get("https://api.bilibili.com/pgc/player/web/v2/playurl")
+            .query(&params)
+            .header("cookie", self.get_cookie());
+        let http_resp = request.send().await?;
+        // 检查http响应状态码
+        let status = http_resp.status();
+        let body = http_resp.text().await?;
+        if status != StatusCode::OK {
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
+        }
+        // 尝试将body解析为BiliResp
+        let bili_resp: BiliResp =
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
+        // 检查BiliResp的code字段
+        if bili_resp.code == -10403 {
+            return Err(eyre!("地区限制，请使用代理或切换线路后重试: {bili_resp:?}"));
+        } else if bili_resp.code != 0 {
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
+        }
+        // 检查BiliResp的data是否存在
+        let Some(data) = bili_resp.data else {
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
+        };
+        // 尝试将data解析为BangumiMediaUrlV2
+        let data_str = data.to_string();
+        let media_url: BangumiMediaUrlV2 = serde_json::from_str(&data_str)
+            .wrap_err(format!("将data解析为BangumiMediaUrlV2失败: {data_str}"))?;
+
+        Ok(media_url)
+    }
+
+    #[instrument(level = "error", skip_all, fields(ep_id = ep_id))]
+    pub async fn get_cheese_url(&self, ep_id: i64) -> eyre::Result<CheeseMediaUrl> {
         let params = json!({
             "ep_id": ep_id,
             "qn": 127,
             "fnval": 4048,
+            "drm_tech_type": 2,
         });
         // 发送获取课程url的请求
         let request = self
@@ -459,30 +524,31 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code == -403 {
-            return Err(anyhow!("没有观看权限，请先购买: {bili_resp:?}"));
+            return Err(eyre!("没有观看权限，请先购买: {bili_resp:?}"));
         } else if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为CheeseMediaUrl
         let data_str = data.to_string();
         let media_url: CheeseMediaUrl = serde_json::from_str(&data_str)
-            .context(format!("将data解析为CheeseMediaUrl失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为CheeseMediaUrl失败: {data_str}"))?;
 
         Ok(media_url)
     }
 
-    pub async fn get_player_info(&self, aid: i64, cid: i64) -> anyhow::Result<PlayerInfo> {
+    #[instrument(level = "error", skip_all, fields(aid = aid, cid = cid))]
+    pub async fn get_player_info(&self, aid: i64, cid: i64) -> eyre::Result<PlayerInfo> {
         let params = json!({
             "aid": aid,
             "cid": cid,
@@ -499,28 +565,29 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为PlayerInfo
         let data_str = data.to_string();
         let player_info: PlayerInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为PlayerInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为PlayerInfo失败: {data_str}"))?;
 
         Ok(player_info)
     }
 
-    pub async fn get_fav_folders(&self, uid: i64) -> anyhow::Result<FavFolders> {
+    #[instrument(level = "error", skip_all)]
+    pub async fn get_fav_folders(&self, uid: i64) -> eyre::Result<FavFolders> {
         let params = json!({"up_mid": uid});
         // 发送获取收藏夹信息的请求
         let request = self
@@ -534,28 +601,29 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为FavFolders
         let data_str = data.to_string();
         let fav_folders: FavFolders = serde_json::from_str(&data_str)
-            .context(format!("将data解析为FavFolders失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为FavFolders失败: {data_str}"))?;
 
         Ok(fav_folders)
     }
 
-    pub async fn get_fav_info(&self, params: GetFavInfoParams) -> anyhow::Result<FavInfo> {
+    #[instrument(level = "error", skip_all)]
+    pub async fn get_fav_info(&self, params: GetFavInfoParams) -> eyre::Result<FavInfo> {
         let params = json!({
             "media_id": params.media_list_id,
             "pn": params.pn,
@@ -574,28 +642,29 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为FavInfo
         let data_str = data.to_string();
         let fav_info: FavInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为FavInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为FavInfo失败: {data_str}"))?;
 
         Ok(fav_info)
     }
 
-    pub async fn get_watch_later_info(&self, page: i32) -> anyhow::Result<WatchLaterInfo> {
+    #[instrument(level = "error", skip_all)]
+    pub async fn get_watch_later_info(&self, page: i32) -> eyre::Result<WatchLaterInfo> {
         // 发送获取稍后观看信息的请求
         let params = json!({"ps": 20, "pn": page});
         let request = self
@@ -609,31 +678,32 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为WatchLaterInfo
         let data_str = data.to_string();
         let watch_later_info: WatchLaterInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为WatchLaterInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为WatchLaterInfo失败: {data_str}"))?;
 
         Ok(watch_later_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_bangumi_follow_info(
         &self,
         params: GetBangumiFollowInfoParams,
-    ) -> anyhow::Result<BangumiFollowInfo> {
+    ) -> eyre::Result<BangumiFollowInfo> {
         // 发送获取番剧追踪信息的请求
         let params = json!({
             "vmid": params.vmid,
@@ -653,31 +723,32 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为BangumiFollowInfo
         let data_str = data.to_string();
         let bangumi_follow_info: BangumiFollowInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为BangumiFollowInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为BangumiFollowInfo失败: {data_str}"))?;
 
         Ok(bangumi_follow_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_history_info(
         &self,
         params: GetHistoryInfoParams,
-    ) -> anyhow::Result<HistoryInfo> {
+    ) -> eyre::Result<HistoryInfo> {
         let device_type: i64 = params.device_type.into();
         let params = json!({
             "pn": params.pn,
@@ -700,33 +771,34 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为HistoryInfo
         let data_str = data.to_string();
         let history_info: HistoryInfo = serde_json::from_str(&data_str)
-            .context(format!("将data解析为HistoryInfo失败: {data_str}"))?;
+            .wrap_err(format!("将data解析为HistoryInfo失败: {data_str}"))?;
 
         Ok(history_info)
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_media_chunk(
         &self,
         media_url: &str,
         start: u64,
         end: u64,
-    ) -> anyhow::Result<Bytes> {
+    ) -> eyre::Result<Bytes> {
         let request = self
             .media_client
             .read()
@@ -736,7 +808,7 @@ impl BiliClient {
         // 检查http响应状态码
         let status = http_resp.status();
         if status != StatusCode::PARTIAL_CONTENT {
-            return Err(anyhow!("预料之外的状态码({status})"));
+            return Err(eyre!("预料之外的状态码({status})"));
         }
 
         let bytes = http_resp.bytes().await?;
@@ -744,55 +816,102 @@ impl BiliClient {
         Ok(bytes)
     }
 
-    pub async fn get_content_length(&self, media_url: &str) -> anyhow::Result<u64> {
-        let request = self.content_length_client.read().head(media_url);
-        let http_resp = request.send().await?;
-        // 检查http响应状态码
-        let status = http_resp.status();
-        if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status})"));
+    #[instrument(level = "error", skip_all, fields(media_url = media_url))]
+    pub async fn get_content_length(&self, media_url: &str) -> eyre::Result<u64> {
+        #[instrument(level = "error", skip_all)]
+        fn parse_content_length(headers: &HeaderMap) -> eyre::Result<u64> {
+            headers
+                .get("Content-Length")
+                .ok_or_eyre("缺少 Content-Length 响应头")?
+                .to_str()
+                .wrap_err("Content-Length 响应头无法转换为字符串")?
+                .parse::<u64>()
+                .wrap_err("Content-Length 响应头无法转换为整数")
         }
 
-        let headers = http_resp.headers();
-        let content_length = headers
-            .get("Content-Length")
-            .context("缺少 Content-Length 响应头")?
-            .to_str()
-            .context("Content-Length 响应头无法转换为字符串")?
-            .parse::<u64>()
-            .context("Content-Length 响应头无法转换为整数")?;
+        #[instrument(level = "error", skip_all)]
+        fn parse_total_from_content_range(headers: &HeaderMap) -> eyre::Result<u64> {
+            // Example: "bytes 0-0/12345"
+            let content_range = headers
+                .get("Content-Range")
+                .ok_or_eyre("缺少 Content-Range 响应头")?
+                .to_str()
+                .wrap_err("Content-Range 响应头无法转换为字符串")?;
 
-        Ok(content_length)
+            let Some((_, total)) = content_range.split_once('/') else {
+                return Err(eyre!("预料之外的 Content-Range 格式: {content_range}"));
+            };
+
+            total
+                .parse::<u64>()
+                .wrap_err("Content-Range 总大小无法转换为整数")
+        }
+
+        // 优先使用 HEAD 获取 Content-Length
+        let request = self.content_length_client.read().head(media_url);
+        let http_resp = request.send().await?;
+        let status = http_resp.status();
+        if status == StatusCode::OK
+            && let Ok(content_length) = parse_content_length(http_resp.headers())
+        {
+            return Ok(content_length);
+        }
+
+        // 部分 upos/CDN 对 HEAD 支持不完整（尤其是高码率/高帧率流），这里降级用 Range 请求探测总大小
+        let request = self
+            .content_length_client
+            .read()
+            .get(media_url)
+            .header("range", "bytes=0-0");
+        let http_resp = request.send().await?;
+        let status = http_resp.status();
+
+        if status == StatusCode::PARTIAL_CONTENT {
+            return parse_total_from_content_range(http_resp.headers());
+        }
+
+        if status == StatusCode::OK {
+            return parse_content_length(http_resp.headers());
+        }
+
+        Err(eyre!("预料之外的状态码({status})"))
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn get_url_with_content_length(&self, urls: Vec<String>) -> Vec<(String, u64)> {
         let mut url_with_content_length = Vec::new();
         let mut join_set = JoinSet::new();
 
         for url in urls {
             let app = self.app.clone();
-            join_set.spawn(async move {
+            let get_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let Ok(content_length) = bili_client.get_content_length(&url).await else {
                     return None;
                 };
                 Some((url, content_length))
-            });
+            };
+            join_set.spawn(get_content_length_task.in_current_span());
         }
 
-        while let Some(Ok(Some((url, content_length)))) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(Some((url, content_length))) = join_result else {
+                continue;
+            };
+
             url_with_content_length.push((url, content_length));
         }
 
         url_with_content_length
     }
 
+    #[instrument(level = "error", skip_all, fields(aid = aid, cid = cid, duration = duration))]
     pub async fn get_danmaku(
         &self,
         aid: i64,
         cid: i64,
         duration: u64,
-    ) -> anyhow::Result<Vec<DmSegMobileReply>> {
+    ) -> eyre::Result<Vec<DmSegMobileReply>> {
         let client = self.api_client.read().clone();
         // 以6分钟为单位分段
         let segment_count = duration.div_ceil(360);
@@ -802,7 +921,9 @@ impl BiliClient {
             let client = client.clone();
             let cookie = self.get_cookie();
 
-            join_set.spawn(async move {
+            let segment_span =
+                tracing::error_span!("get_danmaku_segment", segment_index = segment_index);
+            let segment_task = async move {
                 // 发送获取分段弹幕的请求
                 let params = json!({
                     "type": 1,
@@ -819,18 +940,23 @@ impl BiliClient {
                 let status = http_resp.status();
                 if status != StatusCode::OK {
                     let body = http_resp.text().await?;
-                    return Err(anyhow!("预料之外的状态码({status}): {body}"));
+                    return Err(eyre!("预料之外的状态码({status}): {body}"));
                 }
                 let body = http_resp.bytes().await?;
                 let reply =
-                    DmSegMobileReply::decode(body).context("将body解析为DmSegMobileReply失败")?;
+                    DmSegMobileReply::decode(body).wrap_err("将body解析为DmSegMobileReply失败")?;
 
                 Ok(reply)
-            });
+            };
+            join_set.spawn(segment_task.instrument(segment_span));
         }
 
         let mut replies = Vec::new();
-        while let Some(Ok(res)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(res) = join_result else {
+                continue;
+            };
+
             let reply = res?;
             replies.push(reply);
         }
@@ -838,37 +964,39 @@ impl BiliClient {
         Ok(replies)
     }
 
-    pub async fn get_subtitle(&self, url: &str) -> anyhow::Result<Subtitle> {
+    #[instrument(level = "error", skip_all, fields(url = url))]
+    pub async fn get_subtitle(&self, url: &str) -> eyre::Result<Subtitle> {
         let request = self.api_client.read().get(url);
         let http_resp = request.send().await?;
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为Subtitle
         let subtitle: Subtitle =
-            serde_json::from_str(&body).context(format!("将body解析为Subtitle失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为Subtitle失败: {body}"))?;
 
         Ok(subtitle)
     }
 
-    pub async fn get_cover_data_and_ext(&self, url: &str) -> anyhow::Result<(Bytes, String)> {
+    #[instrument(level = "error", skip_all, fields(url = url))]
+    pub async fn get_cover_data_and_ext(&self, url: &str) -> eyre::Result<(Bytes, String)> {
         let request = self.api_client.read().get(url);
         let http_resp = request.send().await?;
         // 检查http响应状态码
         let status = http_resp.status();
         if status != StatusCode::OK {
             let body = http_resp.text().await?;
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
 
         let content_type = http_resp
             .headers()
             .get("Content-Type")
-            .context("缺少 Content-Type 响应头")?
+            .ok_or_eyre("缺少 Content-Type 响应头")?
             .to_str()
-            .context("Content-Type 响应头无法转换为字符串")?
+            .wrap_err("Content-Type 响应头无法转换为字符串")?
             .to_string();
 
         let ext = match content_type.as_str() {
@@ -883,7 +1011,8 @@ impl BiliClient {
         Ok((bytes, ext.to_string()))
     }
 
-    pub async fn get_tags(&self, aid: i64) -> anyhow::Result<Tags> {
+    #[instrument(level = "error", skip_all, fields(aid = aid))]
+    pub async fn get_tags(&self, aid: i64) -> eyre::Result<Tags> {
         // 发送获取普通视频标签的请求
         let params = json!({"aid": aid});
         let request = self
@@ -897,32 +1026,33 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的code字段
         if bili_resp.code != 0 {
-            return Err(anyhow!("预料之外的code: {bili_resp:?}"));
+            return Err(eyre!("预料之外的code: {bili_resp:?}"));
         }
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为Tags
         let data_str = data.to_string();
-        let tags: Tags =
-            serde_json::from_str(&data_str).context(format!("将data解析为Tags失败: {data_str}"))?;
+        let tags: Tags = serde_json::from_str(&data_str)
+            .wrap_err(format!("将data解析为Tags失败: {data_str}"))?;
 
         Ok(tags)
     }
 
+    #[instrument(level = "error", skip_all, fields(bvid = bvid, cid = cid))]
     pub async fn get_skip_segments(
         &self,
         bvid: &str,
         cid: Option<i64>,
-    ) -> anyhow::Result<SkipSegments> {
+    ) -> eyre::Result<SkipSegments> {
         // 发送获取跳过片段的请求
         let mut params = json!({
             "videoID": bvid,
@@ -944,11 +1074,11 @@ impl BiliClient {
         if status == StatusCode::NOT_FOUND {
             return Ok(SkipSegments(Vec::new()));
         } else if status != StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为SkipSegments
-        let skip_segments: SkipSegments =
-            serde_json::from_str(&body).context(format!("将body解析为SkipSegments失败: {body}"))?;
+        let skip_segments: SkipSegments = serde_json::from_str(&body)
+            .wrap_err(format!("将body解析为SkipSegments失败: {body}"))?;
 
         Ok(skip_segments)
     }
@@ -1031,12 +1161,12 @@ impl ClientBuilderExt for reqwest::ClientBuilder {
                 let proxy_port = &config.proxy_port;
                 let proxy_url = format!("http://{proxy_host}:{proxy_port}");
 
-                match reqwest::Proxy::all(&proxy_url).map_err(anyhow::Error::from) {
+                match reqwest::Proxy::all(&proxy_url).map_err(eyre::Report::from) {
                     Ok(proxy) => self.proxy(proxy),
                     Err(err) => {
                         let err_title = format!("{client_name}将`{proxy_url}`设为代理失败，将直连");
-                        let string_chain = err.to_string_chain();
-                        tracing::error!(err_title, message = string_chain);
+                        let message = err.to_message();
+                        tracing::error!(err_title, message);
                         self.no_proxy()
                     }
                 }

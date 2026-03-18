@@ -3,12 +3,13 @@ import ColorfulTag from '../../../components/ColorfulTag.vue'
 import { commands, NormalInfo, PageInNormalEp, PageInNormal } from '../../../bindings.ts'
 import { EpisodeInfo } from './EpisodeCard.vue'
 import { ensureHttps, playTaskToQueueAnimation } from '../../../utils.tsx'
+import { NButton } from 'naive-ui'
 
 const props = defineProps<{
   info: NormalInfo
   pages: PageInNormalEp[] | PageInNormal[]
   episodeInfo: EpisodeInfo
-  downloadButtonRef?: HTMLDivElement
+  downloadButtonRef?: HTMLDivElement | null
 }>()
 
 function handleDownloadClick(aid: number, cid: number, event: MouseEvent) {
@@ -17,7 +18,7 @@ function handleDownloadClick(aid: number, cid: number, event: MouseEvent) {
 
   commands.createDownloadTasks({ Normal: { info: props.info, aid_cid_pairs: [[aid, cid]] } })
 
-  if (from instanceof Element && to !== undefined) {
+  if (from instanceof Element && to !== undefined && to !== null) {
     playTaskToQueueAnimation(from, to)
   }
 }

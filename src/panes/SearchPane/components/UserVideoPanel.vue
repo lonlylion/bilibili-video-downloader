@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { commands, GetUserVideoInfoParams, UserVideoSearchResult } from '../../../bindings.ts'
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, ref, useTemplateRef, watch } from 'vue'
 import EpisodeCard, { EpisodeInfo } from './EpisodeCard.vue'
 import { useEpisodeCard, useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
-import { SelectionArea } from '@viselect/vue'
+import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
 import { searchPaneRefKey } from '../../../injection_keys.ts'
+import { NButton, NDropdown, NPagination } from 'naive-ui'
 
 const userVideoResult = defineModel<UserVideoSearchResult>('userVideoResult', { required: true })
 
@@ -17,8 +18,13 @@ const pageCount = computed<number>(() => {
   return Math.ceil(count / ps)
 })
 
+const selectionOptions: PartialSelectionOptions = {
+  selectables: '.selectable',
+  features: { deselectOnBlur: true },
+  boundaries: '.user-video-panel-selection-container',
+}
+const selectionAreaRef = useTemplateRef('selectionAreaRef')
 const { selectedIds, updateSelectedIds, unselectAll } = useEpisodeSelection()
-const selectionAreaRef = ref<InstanceType<typeof SelectionArea>>()
 const checkedIds = ref<Set<number>>(new Set())
 
 watch(userVideoResult, () => {
@@ -30,10 +36,14 @@ watch(userVideoResult, () => {
   selectionAreaRef.value?.$el.scrollTo({ top: 0, behavior: 'instant' })
 })
 
-const episodeCardRefs = ref<InstanceType<typeof EpisodeCard>[]>([])
+const episodeCardRefs = useTemplateRef('episodeCardRefs')
 const episodeCardRefsMap = computed<Map<number, InstanceType<typeof EpisodeCard>>>(() => {
   const map = new Map<number, InstanceType<typeof EpisodeCard>>()
-  episodeCardRefs.value.forEach((card) => map.set(card.episodeInfo.aid, card))
+  episodeCardRefs.value?.forEach((card) => {
+    if (card !== null) {
+      map.set(card.episodeInfo.aid, card)
+    }
+  })
   return map
 })
 
@@ -120,13 +130,10 @@ async function getUserVideoInfo(page: number) {
 
 <template>
   <div class="flex flex-col h-full select-none overflow-auto">
-    <SelectionArea
-      ref="selectionAreaRef"
-      class="selection-container flex flex-col flex-1 px-2 overflow-auto"
-      :options="{ selectables: '.selectable', features: { deselectOnBlur: true } }"
-      @contextmenu="showDropdown"
-      @move="updateSelectedIds"
-      @start="unselectAll">
+    <SelectionArea ref="selectionAreaRef" :options="selectionOptions" @move="updateSelectedIds" @start="unselectAll" />
+    <div
+      class="user-video-panel-selection-container flex flex-col flex-1 px-2 overflow-auto"
+      @contextmenu="showDropdown">
       <div class="animate-pulse text-violet">左键拖动进行框选，右键打开菜单</div>
       <div class="flex flex-wrap gap-2">
         <EpisodeCard
@@ -144,7 +151,7 @@ async function getUserVideoInfo(page: number) {
           :handle-context-menu="handleContextMenu"
           :search="searchPaneRef?.search" />
       </div>
-    </SelectionArea>
+    </div>
 
     <div class="flex gap-2 m-2 box-border">
       <n-pagination :page-count="pageCount" :page="currentPage" @update:page="getUserVideoInfo($event)" />
@@ -163,7 +170,7 @@ async function getUserVideoInfo(page: number) {
 </template>
 
 <style scoped>
-.selection-container .selected {
+.user-video-panel-selection-container .selected {
   @apply bg-[rgb(204,232,255)];
 }
 </style>

@@ -1,6 +1,6 @@
 <script setup lang="tsx">
 import { path } from '@tauri-apps/api'
-import { commands, DownloadTaskState } from '../../../bindings.ts'
+import { commands } from '../../../bindings.ts'
 import { useStore } from '../../../store.ts'
 import {
   PhWarningCircle,
@@ -11,15 +11,19 @@ import {
   PhFolderOpen,
   PhFileVideo,
   PhMagnifyingGlass,
+  PhWrench,
 } from '@phosphor-icons/vue'
-import { ProgressProps } from 'naive-ui'
+import { NIcon, NProgress, NTime, ProgressProps, useDialog } from 'naive-ui'
 import UpInfoBadge from '../../../components/UpInfoBadge.vue'
 import { computed, DeepReadonly, inject } from 'vue'
 import ColorfulTag from '../../../components/ColorfulTag.vue'
 import { searchPaneRefKey } from '../../../injection_keys.ts'
 import { ProgressData } from '../DownloadPane.vue'
-import { ensureHttps } from '../../../utils.tsx'
+import { ensureHttps, getAudioQualityName, getCodecTypeName, getVideoQualityName } from '../../../utils.tsx'
 import IconButton from '../../../components/IconButton.vue'
+import ModifyProgressDialogContent from './ModifyProgressDialogContent.vue'
+
+const dialog = useDialog()
 
 const store = useStore()
 
@@ -51,7 +55,9 @@ async function handleProgressDoubleClick() {
   }
 }
 
-function stateToStatus(state: DownloadTaskState): ProgressProps['status'] {
+const progressStatus = computed<ProgressProps['status']>(() => {
+  const state = props.p.state
+
   if (state === 'Completed') {
     return 'success'
   } else if (state === 'Paused') {
@@ -61,9 +67,11 @@ function stateToStatus(state: DownloadTaskState): ProgressProps['status'] {
   } else {
     return 'default'
   }
-}
+})
 
-function stateToColorClass(state: DownloadTaskState) {
+const colorClass = computed<string>(() => {
+  const state = props.p.state
+
   if (state === 'Downloading') {
     return 'text-blue-500'
   } else if (state === 'Pending') {
@@ -77,7 +85,7 @@ function stateToColorClass(state: DownloadTaskState) {
   }
 
   return ''
-}
+})
 
 async function showMp4InFileManager(episodeDir: string, filename: string) {
   if (store.config === undefined) {
@@ -128,20 +136,36 @@ function handleSearchClick() {
     searchPaneRef?.value?.search(`ep${props.p.ep_id}`, 'Cheese')
   }
 }
+
+function handleModifyClick() {
+  const dialogReactive = dialog.create({
+    title: '修改下载内容',
+    showIcon: false,
+    draggable: true,
+    content: () => <ModifyProgressDialogContent p={props.p} destroyDialog={() => dialogReactive.destroy()} />,
+  })
+}
 </script>
 
 <template>
   <div
-    class="p-2 mb-2 rounded-lg flex flex-col border border-solid border-gray-2"
+    class="selectable p-2 mb-2 rounded-lg flex flex-col border border-solid border-gray-2"
+    :class="selectedIds.has(p.task_id) ? 'selected shadow-md' : 'hover:bg-gray-1'"
     @contextmenu="handleProgressContextMenu"
     @dblclick="handleProgressDoubleClick">
     <div class="flex">
-      <img
-        class="w-224px h-140px rounded-lg object-cover lazyload"
-        :data-src="`${ensureHttps(p.cover_task.url)}@672w_378h_1c.webp`"
-        :key="p.cover_task.url"
-        alt=""
-        draggable="false" />
+      <div class="relative">
+        <img
+          class="w-224px h-140px rounded-lg object-cover lazyload"
+          :data-src="`${ensureHttps(p.cover_task.url)}@672w_378h_1c.webp`"
+          :key="p.cover_task.url"
+          alt=""
+          draggable="false" />
+        <div class="absolute top-3 left-3 z-1 flex gap-2">
+          <div v-if="p.is_drm" class="bg-red-5 text-white px-1 rounded" title="该资源受版权保护(DRM)">🔒DRM</div>
+          <div v-if="p.is_preview" class="bg-[#ff6699] text-white px-1 rounded" title="该资源为试看部分">试看</div>
+        </div>
+      </div>
 
       <div class="ml-2 flex flex-col w-full overflow-hidden">
         <div class="text-lg font-bold line-clamp-2" :title="p.episode_title">{{ p.episode_title }}</div>
@@ -156,24 +180,71 @@ function handleSearchClick() {
 
         <div class="mt-auto flex gap-1 flex-wrap pt-2" title="任务内容">
           <ColorfulTag v-if="p.video_task.selected" color="blue">
-            视频(编码:{{ p.video_task.codec_type }} 画质:{{ p.video_task.video_quality }})
+            <span :class="{ 'text-gray': p.video_task.skipped }">
+              <span>
+                <span>视频(</span>
+                <span>{{ getVideoQualityName(p.video_task.video_quality) }}</span>
+                <span>&nbsp;-&nbsp;</span>
+                <span>{{ getCodecTypeName(p.video_task.codec_type) }})</span>
+              </span>
+              <span v-if="p.video_task.skipped">(跳过)</span>
+            </span>
           </ColorfulTag>
+
           <ColorfulTag v-if="p.audio_task.selected" color="blue">
-            音频(音质:{{ p.audio_task.audio_quality }})
+            <span :class="{ 'text-gray': p.audio_task.skipped }">
+              <span>音频({{ getAudioQualityName(p.audio_task.audio_quality) }})</span>
+              <span v-if="p.audio_task.skipped">(跳过)</span>
+            </span>
           </ColorfulTag>
 
-          <ColorfulTag v-if="p.video_process_task.merge_selected" color="purple">自动合并</ColorfulTag>
-          <ColorfulTag v-if="p.video_process_task.embed_chapter_selected" color="purple">标记章节</ColorfulTag>
-          <ColorfulTag v-if="p.video_process_task.embed_skip_selected" color="purple">标记广告</ColorfulTag>
+          <ColorfulTag v-if="p.video_process_task.merge_selected" color="purple">
+            <span :class="{ 'text-gray': p.video_process_task.skipped }">
+              <span>自动合并</span>
+              <span v-if="p.video_process_task.skipped">(跳过)</span>
+            </span>
+          </ColorfulTag>
+          <ColorfulTag v-if="p.video_process_task.embed_chapter_selected" color="purple">
+            <span :class="{ 'text-gray': p.video_process_task.skipped }">
+              <span>标记章节</span>
+              <span v-if="p.video_process_task.skipped">(跳过)</span>
+            </span>
+          </ColorfulTag>
+          <ColorfulTag v-if="p.video_process_task.embed_skip_selected" color="purple">
+            <span :class="{ 'text-gray': p.video_process_task.skipped }">
+              <span>标记广告</span>
+              <span v-if="p.video_process_task.skipped">(跳过)</span>
+            </span>
+          </ColorfulTag>
 
-          <ColorfulTag v-if="p.danmaku_task.xml_selected" color="green">xml弹幕</ColorfulTag>
-          <ColorfulTag v-if="p.danmaku_task.ass_selected" color="green">ass弹幕</ColorfulTag>
-          <ColorfulTag v-if="p.danmaku_task.json_selected" color="green">json弹幕</ColorfulTag>
+          <ColorfulTag v-if="p.danmaku_task.xml_selected" color="green">
+            <span :class="{ 'text-gray': p.danmaku_task.skipped }">
+              <span>xml弹幕</span>
+              <span v-if="p.danmaku_task.skipped">(跳过)</span>
+            </span>
+          </ColorfulTag>
+          <ColorfulTag v-if="p.danmaku_task.ass_selected" color="green">
+            <span :class="{ 'text-gray': p.danmaku_task.skipped }">
+              <span>ass弹幕</span>
+              <span v-if="p.danmaku_task.skipped">(跳过)</span>
+            </span>
+          </ColorfulTag>
+          <ColorfulTag v-if="p.danmaku_task.json_selected" color="green">
+            <span :class="{ 'text-gray': p.danmaku_task.skipped }">
+              <span>json弹幕</span>
+              <span v-if="p.danmaku_task.skipped">(跳过)</span>
+            </span>
+          </ColorfulTag>
 
           <ColorfulTag v-if="p.subtitle_task.selected" color="amber">字幕</ColorfulTag>
           <ColorfulTag v-if="p.cover_task.selected" color="amber">封面</ColorfulTag>
 
-          <ColorfulTag v-if="p.nfo_task.selected" color="rose">nfo刮削</ColorfulTag>
+          <ColorfulTag v-if="p.nfo_task.selected" color="rose">
+            <span :class="{ 'text-gray': p.nfo_task.skipped }">
+              <span>nfo刮削</span>
+              <span v-if="p.nfo_task.skipped">(跳过)</span>
+            </span>
+          </ColorfulTag>
           <ColorfulTag v-if="p.json_task.selected" color="rose">json刮削</ColorfulTag>
         </div>
       </div>
@@ -186,7 +257,7 @@ function handleSearchClick() {
         :up-avatar="p.up_avatar"
         :up-uid="p.up_uid" />
 
-      <div v-if="p.state !== 'Completed'" :class="[stateToColorClass(p.state), 'flex items-center w-100']">
+      <div v-if="p.state !== 'Completed'" :class="[colorClass, 'flex items-center w-100']">
         <n-icon :size="22">
           <PhCloudArrowDown v-if="p.state === 'Downloading'" />
           <PhClock v-else-if="p.state === 'Pending'" />
@@ -196,7 +267,7 @@ function handleSearchClick() {
         <span class="whitespace-nowrap mr-2">{{ p.stateIndicator }}</span>
         <n-progress
           v-if="p.taskIndicator !== ''"
-          :status="stateToStatus(p.state)"
+          :status="progressStatus"
           :percentage="p.percentage"
           :processing="p.state === 'Downloading'">
           {{ p.taskIndicator }}
@@ -224,6 +295,9 @@ function handleSearchClick() {
         </IconButton>
         <IconButton title="在浏览器中打开" :href="href">
           <PhGoogleChromeLogo :size="24" />
+        </IconButton>
+        <IconButton title="修改下载内容" @click="handleModifyClick">
+          <PhWrench :size="24" />
         </IconButton>
       </div>
     </div>

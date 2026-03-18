@@ -1,12 +1,24 @@
 <script setup lang="ts">
 import { commands, DeviceType, HistoryDetail, HistoryInfo } from '../../../bindings.ts'
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, ref, useTemplateRef, watch } from 'vue'
 import { searchPaneRefKey } from '../../../injection_keys.ts'
 import HistoryCard from './HistoryCard.vue'
 import { useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
-import { SelectionArea } from '@viselect/vue'
+import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
 import FloatLabelInput from '../../../components/FloatLabelInput.vue'
 import { PhMagnifyingGlass } from '@phosphor-icons/vue'
+import {
+  NButton,
+  NDatePicker,
+  NDropdown,
+  NIcon,
+  NInputGroup,
+  NPagination,
+  NPopover,
+  NSelect,
+  NTab,
+  NTabs,
+} from 'naive-ui'
 
 const historyInfo = defineModel<HistoryInfo>('historyInfo', { required: true })
 
@@ -105,15 +117,20 @@ async function getHistory(page: number) {
   searching.value = false
 }
 
-const historyCardRefs = ref<InstanceType<typeof HistoryCard>[]>([])
+const historyCardRefs = useTemplateRef<InstanceType<typeof HistoryCard>[]>('historyCardRefs')
 const historyCardRefsMap = computed<Map<number, InstanceType<typeof HistoryCard>>>(() => {
   const map = new Map<number, InstanceType<typeof HistoryCard>>()
-  historyCardRefs.value.forEach((card) => map.set(card.historyDetail.kid, card))
+  historyCardRefs.value?.forEach((card) => map.set(card.historyDetail.kid, card))
   return map
 })
 
+const selectionOptions: PartialSelectionOptions = {
+  selectables: '.selectable',
+  features: { deselectOnBlur: true },
+  boundaries: '.history-panel-selection-container',
+}
+const selectionAreaRef = useTemplateRef('selectionAreaRef')
 const { selectedIds, updateSelectedIds, unselectAll } = useEpisodeSelection()
-const selectionAreaRef = ref<InstanceType<typeof SelectionArea>>()
 const checkedIds = ref<Set<number>>(new Set())
 
 watch(historyInfo, () => {
@@ -291,13 +308,8 @@ function useFavCard(
       </n-button>
     </n-input-group>
 
-    <SelectionArea
-      ref="selectionAreaRef"
-      class="selection-container flex flex-col flex-1 px-2 overflow-auto"
-      :options="{ selectables: '.selectable', features: { deselectOnBlur: true } }"
-      @contextmenu="showDropdown"
-      @move="updateSelectedIds"
-      @start="unselectAll">
+    <SelectionArea ref="selectionAreaRef" :options="selectionOptions" @move="updateSelectedIds" @start="unselectAll" />
+    <div class="history-panel-selection-container flex flex-col flex-1 px-2 overflow-auto" @contextmenu="showDropdown">
       <div class="animate-pulse text-violet">左键拖动进行框选，右键打开菜单</div>
       <div class="flex flex-wrap gap-2">
         <template v-for="historyDetail in historyInfo.list" :key="historyDetail.kid">
@@ -334,7 +346,7 @@ function useFavCard(
             :search="searchPaneRef?.search" />
         </template>
       </div>
-    </SelectionArea>
+    </div>
 
     <div class="flex gap-2 m-2 box-border">
       <n-pagination :page-count="pageCount" :page="currentPage" @update:page="getHistory($event)" />
@@ -353,7 +365,7 @@ function useFavCard(
 </template>
 
 <style scoped>
-.selection-container .selected {
+.history-panel-selection-container .selected {
   @apply bg-[rgb(204,232,255)];
 }
 </style>

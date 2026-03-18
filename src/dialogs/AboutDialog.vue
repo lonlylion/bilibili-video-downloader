@@ -2,6 +2,7 @@
 import { getVersion } from '@tauri-apps/api/app'
 import { ref, onMounted } from 'vue'
 import icon from '../../src-tauri/icons/128x128.png'
+import { NA, NDialog, NModal } from 'naive-ui'
 
 const showing = defineModel<boolean>('showing', { required: true })
 const version = ref('')
@@ -40,7 +41,7 @@ onMounted(async () => {
         </div>
         <div class="flex flex-col text-xs items-center text-gray-400">
           <div>
-            Copyright © 2025
+            Copyright © 2025-2026
             <n-a href="https://github.com/lanyeeee" target="_blank">lanyeeee</n-a>
           </div>
           <div>

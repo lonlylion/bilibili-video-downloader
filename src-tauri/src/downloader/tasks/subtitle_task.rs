@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::Context;
+use eyre::WrapErr;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tracing::instrument;
 
 use crate::{
     downloader::{download_progress::DownloadProgress, download_task::DownloadTask},
@@ -12,22 +13,28 @@ use crate::{
 };
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(default)]
 pub struct SubtitleTask {
     pub selected: bool,
     pub completed: bool,
 }
 
 impl SubtitleTask {
+    pub fn mark_uncompleted(&mut self) {
+        self.completed = false;
+    }
+
     pub fn is_completed(&self) -> bool {
         !self.selected || self.completed
     }
 
+    #[instrument(level = "error", skip_all)]
     pub async fn process(
         &self,
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
         player_info: &mut Option<PlayerInfo>,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         use std::fmt::Write;
 
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
@@ -43,7 +50,7 @@ impl SubtitleTask {
             let subtitle = bili_client
                 .get_subtitle(&url)
                 .await
-                .context("获取字幕失败")?;
+                .wrap_err("获取字幕失败")?;
 
             let mut srt_content = String::new();
             for (i, b) in subtitle.body.iter().enumerate() {

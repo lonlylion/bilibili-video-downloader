@@ -1,20 +1,19 @@
-use std::{
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+﻿use std::{sync::Arc, time::Duration};
 
-use anyhow::Context;
+use eyre::WrapErr;
 use parking_lot::RwLock;
 use tauri::AppHandle;
 use tauri_specta::Event;
 use tokio::{
-    sync::{watch, SemaphorePermit},
+    sync::{SemaphorePermit, watch},
     time::sleep,
 };
+use tracing::instrument;
 
 use crate::{
+    downloader::episode_type::EpisodeType,
     events::DownloadEvent,
-    extensions::{AnyhowErrorToStringChain, AppHandleExt},
+    extensions::{AppHandleExt, EyreReportToMessage},
     types::create_download_task_params::CreateDownloadTaskParams,
 };
 
@@ -27,10 +26,13 @@ pub struct DownloadTask {
     pub cancel_sender: watch::Sender<()>,
     pub delete_sender: watch::Sender<()>,
     pub task_id: String,
+    pub trace_fields: DownloadTaskTraceFields,
     pub progress: RwLock<DownloadProgress>,
 }
 
 impl DownloadTask {
+    #[allow(clippy::too_many_lines)]
+    #[instrument(level = "error", skip_all)]
     pub fn from_params(app: &AppHandle, params: &CreateDownloadTaskParams) -> Vec<Arc<Self>> {
         use CreateDownloadTaskParams::{Bangumi, Cheese, Normal};
 
@@ -38,15 +40,24 @@ impl DownloadTask {
         match params {
             Normal(params) => {
                 for &(aid, cid) in &params.aid_cid_pairs {
+                    let span = tracing::error_span!(
+                        "from_params_normal",
+                        aid = aid,
+                        bvid = params.info.bvid,
+                        cid = cid,
+                        collection_title = params.info.title,
+                        up_name = params.info.owner.name,
+                        up_uid = params.info.owner.mid,
+                    );
+                    let _enter = span.enter();
+
                     let progress = match DownloadProgress::from_normal(app, &params.info, aid, cid)
                     {
                         Ok(progress) => progress,
                         Err(err) => {
-                            let cid = cid.map_or("None".to_string(), |id| id.to_string());
-                            let ids_string = format!("aid: {aid}, cid: {cid}");
-                            let err_title = format!("{ids_string} 创建普通视频的下载进度失败");
-                            let string_chain = err.to_string_chain();
-                            tracing::error!(err_title, message = string_chain);
+                            let err_title = "创建普通视频的下载进度失败";
+                            let message = err.to_message();
+                            tracing::error!(err_title, message);
                             continue;
                         }
                     };
@@ -56,13 +67,21 @@ impl DownloadTask {
             }
             Bangumi(params) => {
                 for ep_id in &params.ep_ids {
+                    let span = tracing::error_span!(
+                        "from_params_bangumi",
+                        ep_id = ep_id,
+                        collection_title = params.info.title,
+                        up_name = params.info.up_info.as_ref().map(|up_info| &up_info.uname),
+                        up_uid = params.info.up_info.as_ref().map(|up_info| up_info.mid),
+                    );
+                    let _enter = span.enter();
+
                     let progress = match DownloadProgress::from_bangumi(app, &params.info, *ep_id) {
                         Ok(progress) => progress,
                         Err(err) => {
-                            let ids_string = format!("ep_id: {ep_id}");
-                            let err_title = format!("{ids_string} 创建番剧的下载进度失败");
-                            let string_chain = err.to_string_chain();
-                            tracing::error!(err_title, message = string_chain);
+                            let err_title = "创建番剧的下载进度失败";
+                            let message = err.to_message();
+                            tracing::error!(err_title, message);
                             continue;
                         }
                     };
@@ -72,13 +91,21 @@ impl DownloadTask {
             }
             Cheese(params) => {
                 for ep_id in &params.ep_ids {
+                    let span = tracing::error_span!(
+                        "from_params_cheese",
+                        ep_id = ep_id,
+                        collection_title = params.info.title,
+                        up_name = params.info.up_info.uname,
+                        up_uid = params.info.up_info.mid,
+                    );
+                    let _enter = span.enter();
+
                     let progress = match DownloadProgress::from_cheese(app, &params.info, *ep_id) {
                         Ok(progress) => progress,
                         Err(err) => {
-                            let ids_string = format!("ep_id: {ep_id}");
-                            let err_title = format!("{ids_string} 创建课程的下载进度失败");
-                            let string_chain = err.to_string_chain();
-                            tracing::error!(err_title, message = string_chain);
+                            let err_title = "创建课程的下载进度失败";
+                            let message = err.to_message();
+                            tracing::error!(err_title, message);
                             continue;
                         }
                     };
@@ -90,15 +117,38 @@ impl DownloadTask {
 
         let mut tasks = Vec::new();
         for progress in progresses {
+            let span = tracing::error_span!(
+                "create_tasks",
+                task_id = progress.task_id,
+                episode_type = ?progress.episode_type,
+                aid = progress.aid,
+                bvid = progress.bvid,
+                cid = progress.cid,
+                ep_id = progress.ep_id,
+                collection_title = progress.collection_title,
+                episode_title = progress.episode_title,
+                episode_order = progress.episode_order,
+                part_title = progress.part_title,
+                part_order = progress.part_order,
+                up_name = progress.up_name,
+                up_uid = progress.up_uid,
+            );
+            let _enter = span.enter();
+
             if let Err(err) = progress.save(app, true) {
-                let ids_string = progress.get_ids_string();
-                let episode_title = &progress.episode_title;
-                let err_title = format!("{ids_string} `{episode_title}`保存下载进度到文件失败");
-                let string_chain = err.to_string_chain();
-                tracing::error!(err_title, message = string_chain);
+                let err_title = "保存下载进度到文件失败";
+                let message = err.to_message();
+                tracing::error!(err_title, message);
             }
 
-            let (state_sender, _) = watch::channel(DownloadTaskState::Pending);
+            let auto_start = app.get_config().read().auto_start_download_task;
+            let init_state = if auto_start {
+                DownloadTaskState::Pending
+            } else {
+                DownloadTaskState::Paused
+            };
+
+            let (state_sender, _) = watch::channel(init_state);
             let (restart_sender, _) = watch::channel(());
             let (cancel_sender, _) = watch::channel(());
             let (delete_sender, _) = watch::channel(());
@@ -110,6 +160,7 @@ impl DownloadTask {
                 cancel_sender,
                 delete_sender,
                 task_id: progress.task_id.clone(),
+                trace_fields: DownloadTaskTraceFields::from(&progress),
                 progress: RwLock::new(progress),
             });
 
@@ -139,6 +190,7 @@ impl DownloadTask {
             cancel_sender,
             delete_sender,
             task_id: progress.task_id.clone(),
+            trace_fields: DownloadTaskTraceFields::from(&progress),
             progress: RwLock::new(progress),
         });
 
@@ -147,8 +199,26 @@ impl DownloadTask {
         task
     }
 
+    #[instrument(
+        level = "error",
+        skip_all,
+        fields(
+            task_id = self.trace_fields.task_id,
+            episode_type = ?self.trace_fields.episode_type,
+            aid = self.trace_fields.aid,
+            bvid = self.trace_fields.bvid,
+            cid = self.trace_fields.cid,
+            ep_id = self.trace_fields.ep_id,
+            collection_title = self.trace_fields.collection_title,
+            episode_title = self.trace_fields.episode_title,
+            episode_order = self.trace_fields.episode_order,
+            part_title = self.trace_fields.part_title,
+            part_order = self.trace_fields.part_order,
+            up_name = self.trace_fields.up_name,
+            up_uid = self.trace_fields.up_uid,
+        )
+    )]
     async fn process(self: Arc<Self>) {
-        let task_id = &self.task_id;
         let state = *self.state_sender.borrow();
         let progress = self.progress.read().clone();
         let _ = DownloadEvent::TaskCreate { state, progress }.emit(&self.app);
@@ -179,7 +249,7 @@ impl DownloadTask {
                     download_task_option = None;
                     if let Some(permit) = permit.take() {
                         drop(permit);
-                    };
+                    }
                 }
 
                 () = self.acquire_task_permit(&mut permit), if state_is_pending => {},
@@ -190,7 +260,7 @@ impl DownloadTask {
 
                 _ = restart_receiver.changed() => {
                     self.handle_restart_notify();
-                    tracing::debug!("ID为`{task_id}`的下载任务已重来");
+                    tracing::debug!("下载任务已重来");
                     download_task_option = None;
                 }
 
@@ -208,52 +278,32 @@ impl DownloadTask {
                         sleep(Duration::from_millis(100)).await;
                     }
 
-                    tracing::debug!("ID为`{task_id}`的下载任务已删除");
+                    tracing::debug!("下载任务已删除");
                     return;
                 }
             }
         }
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn download(self: &Arc<Self>) {
         let mut progress = self.progress.read().clone();
-        let ids_string = progress.get_ids_string();
-        let episode_title = progress.episode_title.clone();
 
         if progress.is_completed() {
-            tracing::info!("{ids_string} 跳过`{episode_title}`的下载，因为它已经完成");
+            tracing::info!("跳过下载，因为下载任务已完成");
             self.set_state(DownloadTaskState::Completed);
             return;
         }
 
-        tracing::debug!("{ids_string} 开始准备`{episode_title}`的下载");
-        let _ = DownloadEvent::ProgressPreparing {
-            task_id: self.task_id.clone(),
-        }
-        .emit(&self.app);
-
-        if let Err(err) = progress.prepare(&self.app).await {
-            let err_title = format!("{ids_string} `{episode_title}`准备下载失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
-
-            self.set_state(DownloadTaskState::Failed);
-
-            return;
-        }
-
-        progress.completed_ts = None; // 重置完成时间戳
-        self.update_progress(|p| *p = progress.clone());
-
-        tracing::debug!("{ids_string} 开始下载`{episode_title}`");
-        if let Err(err) = self
-            .handle_progress(progress)
+        tracing::debug!("开始下载");
+        if let Err(err) = progress
+            .process(self)
             .await
-            .context("[继续]失败的任务可以断点续传")
+            .wrap_err("[继续]失败的任务可以断点续传")
         {
-            let err_title = format!("{ids_string} `{episode_title}`下载失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
+            let err_title = "下载失败";
+            let message = err.to_message();
+            tracing::error!(err_title, message);
 
             self.set_state(DownloadTaskState::Failed);
 
@@ -263,103 +313,7 @@ impl DownloadTask {
         self.sleep_between_task().await;
 
         self.set_state(DownloadTaskState::Completed);
-        tracing::info!("{ids_string} `{episode_title}`下载完成");
-    }
-
-    async fn handle_progress(self: &Arc<Self>, progress: DownloadProgress) -> anyhow::Result<()> {
-        let ids_string = progress.get_ids_string();
-        let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
-
-        std::fs::create_dir_all(episode_dir).context(format!(
-            "{ids_string} 创建目录`{}`失败",
-            episode_dir.display()
-        ))?;
-
-        let video_task = &progress.video_task;
-        let audio_task = &progress.audio_task;
-        let video_process_task = &progress.video_process_task;
-        let danmaku_task = &progress.danmaku_task;
-        let subtitle_task = &progress.subtitle_task;
-        let cover_task = &progress.cover_task;
-        let nfo_task = &progress.nfo_task;
-        let json_task = &progress.json_task;
-
-        let mut player_info = None;
-        let mut episode_info = None;
-
-        if !video_task.is_completed() && video_task.content_length != 0 {
-            video_task
-                .process(self, &progress)
-                .await
-                .context(format!("{ids_string} `{filename}`下载视频文件失败"))?;
-            tracing::debug!("{ids_string} `{filename}`视频下载完成");
-        }
-
-        if !audio_task.is_completed() && audio_task.content_length != 0 {
-            audio_task
-                .process(self, &progress)
-                .await
-                .context(format!("{ids_string} `{filename}`下载音频文件失败"))?;
-            tracing::debug!("{ids_string} `{filename}`音频下载完成");
-        }
-
-        if !video_process_task.is_completed() {
-            video_process_task
-                .process(self, &progress, &mut player_info)
-                .await
-                .context(format!("{ids_string} `{filename}`视频处理失败"))?;
-            tracing::debug!("{ids_string} `{filename}`视频处理完成");
-        }
-
-        if !danmaku_task.is_completed() {
-            danmaku_task
-                .process(self, &progress)
-                .await
-                .context(format!("{ids_string} `{filename}`下载弹幕失败"))?;
-            tracing::debug!("{ids_string} `{filename}`弹幕下载完成");
-        }
-
-        if !subtitle_task.is_completed() {
-            subtitle_task
-                .process(self, &progress, &mut player_info)
-                .await
-                .context(format!("{ids_string} `{filename}`下载字幕失败"))?;
-            tracing::debug!("{ids_string} `{filename}`字幕下载完成");
-        }
-
-        if !cover_task.is_completed() {
-            cover_task
-                .process(self, &progress)
-                .await
-                .context(format!("{ids_string} `{filename}`下载封面失败"))?;
-            tracing::debug!("{ids_string} `{filename}`封面下载完成");
-        }
-
-        if !nfo_task.is_completed() {
-            nfo_task
-                .process(self, &progress, &mut episode_info)
-                .await
-                .context(format!("{ids_string} `{filename}`下载NFO失败"))?;
-            tracing::debug!("{ids_string} `{filename}`NFO下载完成");
-        }
-
-        if !json_task.is_completed() {
-            json_task
-                .process(self, &progress, &mut episode_info)
-                .await
-                .context(format!("{ids_string} `{filename}`下载JSON元数据失败"))?;
-            tracing::debug!("{ids_string} `{filename}`JSON元数据下载完成");
-        }
-
-        let completed_ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .ok();
-        if completed_ts.is_some() {
-            self.update_progress(|p| p.completed_ts = completed_ts);
-        }
-
-        Ok(())
+        tracing::info!("下载成功");
     }
 
     async fn sleep_between_task(&self) {
@@ -377,12 +331,8 @@ impl DownloadTask {
         }
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn acquire_task_permit<'a>(&'a self, permit: &mut Option<SemaphorePermit<'a>>) {
-        let (episode_title, ids_string) = {
-            let progress = self.progress.read();
-            (progress.episode_title.clone(), progress.get_ids_string())
-        };
-
         *permit = match permit.take() {
             // 如果有permit，则直接用
             Some(permit) => Some(permit),
@@ -394,14 +344,13 @@ impl DownloadTask {
                 .task_sem
                 .acquire()
                 .await
-                .map_err(anyhow::Error::from)
+                .map_err(eyre::Report::from)
             {
                 Ok(permit) => Some(permit),
                 Err(err) => {
-                    let err_title =
-                        format!("{ids_string} `{episode_title}`获取下载任务的permit失败");
-                    let string_chain = err.to_string_chain();
-                    tracing::error!(err_title, message = string_chain);
+                    let err_title = "获取下载任务的permit失败";
+                    let message = err.to_message();
+                    tracing::error!(err_title, message);
 
                     self.set_state(DownloadTaskState::Failed);
 
@@ -417,16 +366,17 @@ impl DownloadTask {
         if let Err(err) = self
             .state_sender
             .send(DownloadTaskState::Downloading)
-            .map_err(anyhow::Error::from)
+            .map_err(eyre::Report::from)
         {
-            let err_title = format!("{ids_string} `{episode_title}`发送状态`Downloading`失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
+            let err_title = "发送状态`Downloading`失败";
+            let message = err.to_message();
+            tracing::error!(err_title, message);
 
             self.set_state(DownloadTaskState::Failed);
         }
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn handle_state_change<'a>(
         &'a self,
         permit: &mut Option<SemaphorePermit<'a>>,
@@ -440,14 +390,14 @@ impl DownloadTask {
             // 稍微等一下再释放permit
             // 避免大批量暂停时，本应暂停的任务因拿到permit而稍微下载一小段(虽然最终会被暂停)
             sleep(Duration::from_millis(100)).await;
-            let task_id = &self.task_id;
-            tracing::debug!("ID为`{task_id}`的下载任务已暂停");
+            tracing::debug!("下载任务已暂停");
             if let Some(permit) = permit.take() {
                 drop(permit);
-            };
+            }
         }
     }
 
+    #[instrument(level = "error", skip_all)]
     fn handle_restart_notify(&self) {
         self.update_progress(|p| {
             p.mark_uncompleted();
@@ -455,24 +405,43 @@ impl DownloadTask {
         self.set_state(DownloadTaskState::Pending);
     }
 
+    #[instrument(
+        level = "error",
+        skip_all,
+        fields(
+            task_id = self.trace_fields.task_id,
+            episode_type = ?self.trace_fields.episode_type,
+            aid = self.trace_fields.aid,
+            bvid = self.trace_fields.bvid,
+            cid = self.trace_fields.cid,
+            ep_id = self.trace_fields.ep_id,
+            collection_title = self.trace_fields.collection_title,
+            episode_title = self.trace_fields.episode_title,
+            episode_order = self.trace_fields.episode_order,
+            part_title = self.trace_fields.part_title,
+            part_order = self.trace_fields.part_order,
+            up_name = self.trace_fields.up_name,
+            up_uid = self.trace_fields.up_uid,
+        )
+    )]
     pub fn set_state(&self, state: DownloadTaskState) {
-        let (episode_title, ids_string) = {
-            let progress = self.progress.read();
-            (progress.episode_title.clone(), progress.get_ids_string())
-        };
-
-        if let Err(err) = self.state_sender.send(state).map_err(anyhow::Error::from) {
-            let err_title = format!("{ids_string} `{episode_title}`发送状态`{state:?}`失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
+        if let Err(err) = self.state_sender.send(state).map_err(eyre::Report::from) {
+            let err_title = format!("发送状态`{state:?}`失败");
+            let message = err.to_message();
+            tracing::error!(err_title, message);
         }
     }
 
+    #[instrument(level = "error", skip_all)]
     pub fn update_progress(&self, update_fn: impl FnOnce(&mut DownloadProgress)) {
         // 修改数据
         let updated_progress = {
             let mut progress = self.progress.write();
             update_fn(&mut progress);
+            // TODO: 这里应该返回 progress.clone()
+            // 专门用一个 {} 框出来就是为了避免在emit和save期间仍持有写锁
+            // 然而这里弄错了progress的类型
+            // 错把progress当成了DownloadProgress，实则类型为RwLockWriteGuard
             progress
         };
         // 发送更新事件并保存到文件
@@ -482,11 +451,45 @@ impl DownloadTask {
         .emit(&self.app);
 
         if let Err(err) = updated_progress.save(&self.app, false) {
-            let ids_string = updated_progress.get_ids_string();
-            let episode_title = &updated_progress.episode_title;
-            let err_title = format!("{ids_string} `{episode_title}`保存下载进度到文件失败");
-            let string_chain = err.to_string_chain();
-            tracing::error!(err_title, message = string_chain);
+            let err_title = "保存下载进度到文件失败";
+            let message = err.to_message();
+            tracing::error!(err_title, message);
+        }
+    }
+}
+
+pub struct DownloadTaskTraceFields {
+    pub task_id: String,
+    pub episode_type: EpisodeType,
+    pub aid: i64,
+    pub bvid: Option<String>,
+    pub cid: i64,
+    pub ep_id: Option<i64>,
+    pub collection_title: String,
+    pub episode_title: String,
+    pub episode_order: i64,
+    pub part_title: Option<String>,
+    pub part_order: Option<i64>,
+    pub up_name: Option<String>,
+    pub up_uid: Option<i64>,
+}
+
+impl From<&DownloadProgress> for DownloadTaskTraceFields {
+    fn from(progress: &DownloadProgress) -> Self {
+        Self {
+            task_id: progress.task_id.clone(),
+            episode_type: progress.episode_type,
+            aid: progress.aid,
+            bvid: progress.bvid.clone(),
+            cid: progress.cid,
+            ep_id: progress.ep_id,
+            collection_title: progress.collection_title.clone(),
+            episode_title: progress.episode_title.clone(),
+            episode_order: progress.episode_order,
+            part_title: progress.part_title.clone(),
+            part_order: progress.part_order,
+            up_name: progress.up_name.clone(),
+            up_uid: progress.up_uid,
         }
     }
 }

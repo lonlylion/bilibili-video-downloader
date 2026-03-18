@@ -1,10 +1,11 @@
 <script setup lang="tsx">
 import { CheeseSearchResult, commands } from '../../../bindings.ts'
-import { SelectionArea } from '@viselect/vue'
-import { ref, nextTick, watch, computed } from 'vue'
+import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
+import { ref, nextTick, watch, computed, useTemplateRef } from 'vue'
 import CollectionCard from './CollectionCard.vue'
 import { useEpisodeCard, useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
 import EpisodeCard, { EpisodeInfo } from './EpisodeCard.vue'
+import { NButton, NCollapseTransition, NDropdown } from 'naive-ui'
 
 const props = defineProps<{
   cheeseResult: CheeseSearchResult
@@ -12,16 +13,21 @@ const props = defineProps<{
 
 const collectionCardShowing = ref<boolean>(false)
 
+const selectionOptions: PartialSelectionOptions = {
+  selectables: '.selectable',
+  features: { deselectOnBlur: true },
+  boundaries: '.cheese-panel-selection-container',
+}
+const selectionAreaRef = useTemplateRef('selectionAreaRef')
 const { selectedIds, updateSelectedIds, unselectAll } = useEpisodeSelection()
-const selectionAreaRef = ref<InstanceType<typeof SelectionArea>>()
 const checkedIds = ref<Set<number>>(new Set())
 
-const rootDivRef = ref<HTMLDivElement>()
-const episodeCardRefs = ref<InstanceType<typeof EpisodeCard>[]>([])
+const rootDivRef = useTemplateRef('rootDivRef')
+const episodeCardRefs = useTemplateRef('episodeCardRefs')
 const episodeCardRefsMap = computed<Map<number, InstanceType<typeof EpisodeCard>>>(() => {
   const map = new Map<number, InstanceType<typeof EpisodeCard>>()
-  episodeCardRefs.value.forEach((card) => {
-    if (card.episodeInfo.epId !== undefined) {
+  episodeCardRefs.value?.forEach((card) => {
+    if (card !== null && card.episodeInfo.epId !== undefined) {
       map.set(card.episodeInfo.epId, card)
     }
   })
@@ -100,7 +106,7 @@ watch(
     checkedIds.value = new Set([ep.id])
     await nextTick()
 
-    if (rootDivRef.value === undefined) {
+    if (rootDivRef.value === null) {
       return
     }
 
@@ -134,13 +140,10 @@ async function downloadCheckedEpisodes() {
 
 <template>
   <div class="flex flex-col h-full select-none" ref="rootDivRef">
-    <SelectionArea
-      ref="selectionAreaRef"
-      class="selection-container flex flex-col flex-1 px-2 pt-0 overflow-auto"
-      :options="{ selectables: '.selectable', features: { deselectOnBlur: true } }"
-      @contextmenu="showDropdown"
-      @move="updateSelectedIds"
-      @start="unselectAll">
+    <SelectionArea ref="selectionAreaRef" :options="selectionOptions" @move="updateSelectedIds" @start="unselectAll" />
+    <div
+      class="cheese-panel-selection-container flex flex-col flex-1 px-2 pt-0 overflow-auto"
+      @contextmenu="showDropdown">
       <div class="animate-pulse text-violet">左键拖动进行框选，右键打开菜单</div>
       <div class="flex flex-wrap gap-2">
         <EpisodeCard
@@ -157,7 +160,7 @@ async function downloadCheckedEpisodes() {
           :handle-checkbox-click="handleCheckboxClick"
           :handle-context-menu="handleContextMenu" />
       </div>
-    </SelectionArea>
+    </div>
 
     <div class="p-2 ml-auto">
       <n-button class="mr-2" size="small" @click="collectionCardShowing = !collectionCardShowing">
@@ -188,7 +191,7 @@ async function downloadCheckedEpisodes() {
 </template>
 
 <style scoped>
-.selection-container .selected {
+.cheese-panel-selection-container .selected {
   @apply bg-[rgb(204,232,255)];
 }
 </style>

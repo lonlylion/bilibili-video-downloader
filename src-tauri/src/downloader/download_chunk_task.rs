@@ -7,6 +7,7 @@ use std::{
 
 use parking_lot::Mutex;
 use tokio::{sync::SemaphorePermit, time::sleep};
+use tracing::instrument;
 
 use crate::{
     downloader::{download_task::DownloadTask, download_task_state::DownloadTaskState},
@@ -23,7 +24,17 @@ pub struct DownloadChunkTask {
 }
 
 impl DownloadChunkTask {
-    pub async fn process(self) -> anyhow::Result<usize> {
+    #[instrument(
+        level = "error",
+        skip_all,
+        fields(
+            url = self.url,
+            chunk_index = ?self.chunk_index,
+            start = self.start,
+            end = self.end,
+        )
+    )]
+    pub async fn process(self) -> eyre::Result<usize> {
         let download_chunk_task = self.download_chunk();
         tokio::pin!(download_chunk_task);
 
@@ -53,10 +64,13 @@ impl DownloadChunkTask {
                         sleep(Duration::from_millis(100)).await;
                         if let Some(permit) = permit.take() {
                             drop(permit);
-                        };
+                        }
                     }
                 },
-
+                // FIXME: 直接返回chunk_index存在进度误标风险
+                // 上层会将这个分片标记为已下载，而分片其实是被打断的
+                // 应该把返回值改成 enum DownloadChunkResult { Downloaded(idx), Interrupted }
+                // 然后由上层处理
                 _ = restart_receiver.changed() => break Ok(self.chunk_index),
 
                 _ = delete_receiver.changed() => break Ok(self.chunk_index),
@@ -64,7 +78,8 @@ impl DownloadChunkTask {
         }
     }
 
-    async fn download_chunk(&self) -> anyhow::Result<usize> {
+    #[instrument(level = "error", skip_all)]
+    async fn download_chunk(&self) -> eyre::Result<usize> {
         let bili_client = self.download_task.app.get_bili_client();
         let chunk_data = bili_client
             .get_media_chunk(&self.url, self.start, self.end)
@@ -94,10 +109,11 @@ impl DownloadChunkTask {
         Ok(self.chunk_index)
     }
 
+    #[instrument(level = "error", skip_all)]
     async fn acquire_chunk_permit<'a>(
         &'a self,
         permit: &mut Option<SemaphorePermit<'a>>,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         *permit = match permit.take() {
             // 如果有permit，则直接用
             Some(permit) => Some(permit),

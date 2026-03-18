@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager};
+use tracing::instrument;
 
 use crate::{
     danmaku_xml_to_ass::canvas::CanvasConfig,
@@ -42,10 +43,13 @@ pub struct Config {
     pub chunk_concurrency: usize,
     pub chunk_download_interval_sec: u64,
     pub danmaku_config: CanvasConfig,
+    pub file_exist_action: FileExistAction,
+    pub auto_start_download_task: bool,
 }
 
 impl Config {
-    pub fn new(app: &AppHandle) -> anyhow::Result<Config> {
+    #[instrument(level = "error", skip_all)]
+    pub fn new(app: &AppHandle) -> eyre::Result<Config> {
         let app_data_dir = app.path().app_data_dir()?;
         let config_path = app_data_dir.join("config.json");
 
@@ -65,7 +69,8 @@ impl Config {
         Ok(config)
     }
 
-    pub fn save(&self, app: &AppHandle) -> anyhow::Result<()> {
+    #[instrument(level = "error", skip_all)]
+    pub fn save(&self, app: &AppHandle) -> eyre::Result<()> {
         let app_data_dir = app.path().app_data_dir()?;
         let config_path = app_data_dir.join("config.json");
         let config_string = serde_json::to_string_pretty(self)?;
@@ -151,6 +156,8 @@ impl Config {
             chunk_concurrency: 16,
             chunk_download_interval_sec: 0,
             danmaku_config: CanvasConfig::default(),
+            file_exist_action: FileExistAction::Overwrite,
+            auto_start_download_task: true,
         }
     }
 }
@@ -161,4 +168,11 @@ pub enum ProxyMode {
     NoProxy,
     System,
     Custom,
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]
+pub enum FileExistAction {
+    #[default]
+    Overwrite,
+    Skip,
 }

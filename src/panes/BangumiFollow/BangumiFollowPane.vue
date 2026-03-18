@@ -3,6 +3,7 @@ import { useStore } from '../../store.ts'
 import { ref, watch } from 'vue'
 import { BangumiFollowInfo, commands } from '../../bindings.ts'
 import BangumiFollowPanel from './components/BangumiFollowPanel.vue'
+import { NEmpty } from 'naive-ui'
 
 const store = useStore()
 

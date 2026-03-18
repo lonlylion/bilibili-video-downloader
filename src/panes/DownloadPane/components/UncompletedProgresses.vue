@@ -1,8 +1,8 @@
 <script setup lang="tsx">
-import { ref, watchEffect, computed, nextTick, DeepReadonly, watch } from 'vue'
-import { SelectionArea, SelectionEvent } from '@viselect/vue'
+import { ref, watchEffect, computed, nextTick, DeepReadonly, watch, useTemplateRef } from 'vue'
+import { PartialSelectionOptions, SelectionArea, SelectionEvent } from '@viselect/vue'
 import { commands } from '../../../bindings.ts'
-import { DropdownOption, NIcon } from 'naive-ui'
+import { DropdownOption, NDropdown, NIcon } from 'naive-ui'
 import { PhPause, PhChecks, PhTrash, PhCaretRight, PhArrowClockwise } from '@phosphor-icons/vue'
 import { useStore } from '../../../store.ts'
 import DownloadProgress from './DownloadProgress.vue'
@@ -10,9 +10,13 @@ import { ProgressData } from '../DownloadPane.vue'
 
 const store = useStore()
 
+const selectionOptions: PartialSelectionOptions = {
+  selectables: '.selectable',
+  features: { deselectOnBlur: true },
+  boundaries: '.uncompleted-progresses-selection-container',
+}
+const selectionAreaRef = useTemplateRef('selectionAreaRef')
 const selectedIds = ref<Set<string>>(new Set())
-const selectionAreaRef = ref<InstanceType<typeof SelectionArea>>()
-const progressRefs = ref<InstanceType<typeof DownloadProgress>[]>([])
 const { dropdownX, dropdownY, dropdownShowing, dropdownOptions, showDropdown } = useDropdown()
 
 const uncompletedProgresses = computed<[string, DeepReadonly<ProgressData>][]>(() =>
@@ -210,13 +214,8 @@ defineExpose({
 
 <template>
   <div class="h-full flex flex-col overflow-auto">
-    <SelectionArea
-      ref="selectionAreaRef"
-      class="h-full flex flex-col selection-container px-2"
-      :options="{ selectables: '.selectable', features: { deselectOnBlur: true } }"
-      @contextmenu="showDropdown"
-      @move="updateSelectedIds"
-      @start="unselectAll">
+    <SelectionArea ref="selectionAreaRef" :options="selectionOptions" @move="updateSelectedIds" @start="unselectAll" />
+    <div class="h-full flex flex-col uncompleted-progresses-selection-container px-2" @contextmenu="showDropdown">
       <div class="flex">
         <span class="animate-pulse text-violet">
           左键拖动进行框选，右键打开菜单，双击暂停/继续，失败的任务也可以继续
@@ -226,12 +225,10 @@ defineExpose({
       <DownloadProgress
         v-for="[taskId, p] in currentPageProgresses"
         :key="taskId"
-        :p="p"
-        v-model:selected-ids="selectedIds"
-        ref="progressRefs"
         :data-key="taskId"
-        :class="['selectable ', selectedIds.has(taskId) ? 'selected shadow-md' : 'hover:bg-gray-1']" />
-    </SelectionArea>
+        :p="p"
+        v-model:selected-ids="selectedIds" />
+    </div>
 
     <n-dropdown
       placement="bottom-start"
@@ -245,11 +242,11 @@ defineExpose({
 </template>
 
 <style scoped>
-.selection-container {
+.uncompleted-progresses-selection-container {
   @apply select-none overflow-auto;
 }
 
-.selection-container .selected {
+.uncompleted-progresses-selection-container .selected {
   @apply bg-[rgb(204,232,255)];
 }
 </style>

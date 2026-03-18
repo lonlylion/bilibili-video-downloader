@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { commands, MediaInWatchLater, WatchLaterInfo } from '../../../bindings.ts'
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, ref, useTemplateRef, watch } from 'vue'
 import { useEpisodeDropdown, useEpisodeSelection } from '../../../utils.tsx'
-import { SelectionArea } from '@viselect/vue'
+import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
 import { searchPaneRefKey } from '../../../injection_keys.ts'
 import WatchLaterCard from './WatchLaterCard.vue'
+import { NButton, NDropdown, NPagination } from 'naive-ui'
 
 const watchLaterInfo = defineModel<WatchLaterInfo>('watchLaterInfo', { required: true })
 
@@ -19,15 +20,20 @@ const pageCount = computed<number>(() => {
   return Math.ceil(watchLaterInfo.value.count / 20)
 })
 
-const watchLaterCardRefs = ref<InstanceType<typeof WatchLaterCard>[]>([])
+const watchLaterCardRefs = useTemplateRef<InstanceType<typeof WatchLaterCard>[]>('watchLaterCardRefs')
 const watchLaterCardRefsMap = computed<Map<number, InstanceType<typeof WatchLaterCard>>>(() => {
   const map = new Map<number, InstanceType<typeof WatchLaterCard>>()
-  watchLaterCardRefs.value.forEach((card) => map.set(card.media.aid, card))
+  watchLaterCardRefs.value?.forEach((card) => map.set(card.media.aid, card))
   return map
 })
 
+const selectionOptions: PartialSelectionOptions = {
+  selectables: '.selectable',
+  features: { deselectOnBlur: true },
+  boundaries: '.watch-later-panel-selection-container',
+}
+const selectionAreaRef = useTemplateRef('selectionAreaRef')
 const { selectedIds, updateSelectedIds, unselectAll } = useEpisodeSelection()
-const selectionAreaRef = ref<InstanceType<typeof SelectionArea>>()
 const checkedIds = ref<Set<number>>(new Set())
 
 watch(watchLaterInfo, () => {
@@ -133,13 +139,10 @@ function useWatchLaterCard(
 
 <template>
   <div class="flex flex-col h-full select-none overflow-auto">
-    <SelectionArea
-      ref="selectionAreaRef"
-      class="selection-container flex flex-col flex-1 px-2 overflow-auto"
-      :options="{ selectables: '.selectable', features: { deselectOnBlur: true } }"
-      @contextmenu="showDropdown"
-      @move="updateSelectedIds"
-      @start="unselectAll">
+    <SelectionArea ref="selectionAreaRef" :options="selectionOptions" @move="updateSelectedIds" @start="unselectAll" />
+    <div
+      class="watch-later-panel-selection-container flex flex-col flex-1 px-2 overflow-auto"
+      @contextmenu="showDropdown">
       <div class="animate-pulse text-violet">左键拖动进行框选，右键打开菜单</div>
       <div class="flex flex-wrap gap-2">
         <template v-for="media in watchLaterInfo.list" :key="media.aid">
@@ -159,13 +162,12 @@ function useWatchLaterCard(
             :search="searchPaneRef?.search" />
           <WatchLaterCard
             v-else
-            ref="favCardRefs"
             class="border border-solid border-transparent hover:border-gray-3"
             :media="media"
             :search="searchPaneRef?.search" />
         </template>
       </div>
-    </SelectionArea>
+    </div>
 
     <div class="flex gap-2 m-2 box-border">
       <n-pagination :page-count="pageCount" :page="currentPage" @update:page="getWatchLaterInfo($event)" />
@@ -184,7 +186,7 @@ function useWatchLaterCard(
 </template>
 
 <style scoped>
-.selection-container .selected {
+.watch-later-panel-selection-container .selected {
   @apply bg-[rgb(204,232,255)];
 }
 </style>

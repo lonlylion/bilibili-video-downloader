@@ -3,6 +3,7 @@ import { PhFolderOpen } from '@phosphor-icons/vue'
 import { commands } from '../../../bindings.ts'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useStore } from '../../../store.ts'
+import { NButton, NIcon, NInput, NInputGroup, NInputGroupLabel } from 'naive-ui'
 
 const store = useStore()
 

@@ -20,4 +20,7 @@ export default defineConfig([
       },
     },
   },
+  {
+    ignores: ['src/bindings.ts', 'src/vite-env.d.ts'],
+  },
 ])

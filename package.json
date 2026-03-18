@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "format": "prettier . -w && cargo fmt --all --manifest-path src-tauri/Cargo.toml && cargo fmt --all --manifest-path src-plugin/Cargo.toml && cargo fmt --all --manifest-path src-plugin/examples/Cargo.toml",
+    "check": "prettier . --check && eslint -c eslint.config.js --max-warnings=0 src && vue-tsc --noEmit && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings && cargo clippy --manifest-path src-plugin/Cargo.toml --workspace -- -D warnings && cargo clippy --manifest-path src-plugin/examples/Cargo.toml --workspace -- -D warnings"
   },
   "dependencies": {
     "@phosphor-icons/vue": "^2.2.1",
@@ -19,10 +21,10 @@
     "lazysizes": "^5.3.2",
     "naive-ui": "^2.42.0",
     "pinia": "^3.0.3",
-    "unplugin-auto-import": "^19.3.0",
-    "unplugin-vue-components": "^28.8.0",
+    "virtua": "^0.48.6",
     "vue": "^3.5.13",
-    "vue-draggable-plus": "^0.6.0"
+    "vue-draggable-plus": "^0.6.0",
+    "z-vue-scan": "^0.0.35"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",

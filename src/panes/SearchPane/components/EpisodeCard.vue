@@ -1,5 +1,5 @@
 <script setup lang="tsx">
-import { computed, inject, onMounted, onUpdated, ref } from 'vue'
+import { computed, inject, onMounted, onUpdated, useTemplateRef } from 'vue'
 import {
   BangumiSearchResult,
   CheeseSearchResult,
@@ -13,7 +13,7 @@ import {
 } from '../../../bindings.ts'
 import SimpleCheckbox from '../../../components/SimpleCheckbox.vue'
 import { PhDownloadSimple, PhGoogleChromeLogo, PhQueue, PhMagnifyingGlass } from '@phosphor-icons/vue'
-import { useDialog } from 'naive-ui'
+import { NTime, useDialog } from 'naive-ui'
 import PartsDialogContent from './PartsDialogContent.vue'
 import { ensureHttps, extractBvid, isElementInViewport, playTaskToQueueAnimation } from '../../../utils.tsx'
 import { navDownloadButtonRefKey } from '../../../injection_keys.ts'
@@ -51,8 +51,8 @@ const props = defineProps<{
 }>()
 
 const navDownloadButtonRef = inject(navDownloadButtonRefKey)
-const rootDivRef = ref<HTMLDivElement>()
-const downloadButtonRef = ref<InstanceType<typeof IconButton>>()
+const rootDivRef = useTemplateRef('rootDivRef')
+const downloadButtonRef = useTemplateRef('downloadButtonRef')
 
 const episodeInfo = computed<EpisodeInfo>(() => {
   if (props.episodeType === 'NormalSingle') {
@@ -171,14 +171,14 @@ async function handleDownloadClick() {
 }
 
 function playDownloadAnimation() {
-  if (rootDivRef.value === undefined) {
+  if (rootDivRef.value === null) {
     return
   }
 
   const from = downloadButtonRef.value?.$el
   const to = navDownloadButtonRef?.value
 
-  if (from instanceof Element && to !== undefined) {
+  if (from instanceof Element && to !== undefined && to !== null) {
     if (isElementInViewport(rootDivRef.value)) {
       // 只有卡片在视口内才播放动画
       playTaskToQueueAnimation(from, to)

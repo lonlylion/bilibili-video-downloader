@@ -4,20 +4,22 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, Context};
+use eyre::{WrapErr, eyre};
 use fs4::fs_std::FileExt;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
 use tokio::task::JoinSet;
+use tracing::{Instrument, instrument};
 
 use crate::{
+    config::FileExistAction,
     downloader::{
         download_chunk_task::DownloadChunkTask, download_progress::DownloadProgress,
         download_task::DownloadTask, media_chunk::MediaChunk,
     },
-    extensions::{AnyhowErrorToStringChain, AppHandleExt},
+    extensions::{AppHandleExt, EyreReportToMessage},
     types::{
         audio_quality::AudioQuality, bangumi_media_url::BangumiMediaUrl,
         cheese_media_url::CheeseMediaUrl, normal_media_url::NormalMediaUrl,
@@ -28,6 +30,7 @@ use crate::{
 const CHUNK_SIZE: u64 = 2 * 1024 * 1024; // 2MB
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(default)]
 pub struct AudioTask {
     pub selected: bool,
     pub url: String,
@@ -35,14 +38,11 @@ pub struct AudioTask {
     pub content_length: u64,
     pub chunks: Vec<MediaChunk>,
     pub completed: bool,
+    pub skipped: bool,
 }
 
 impl AudioTask {
-    pub async fn prepare_normal(
-        &mut self,
-        app: &AppHandle,
-        media_url: &NormalMediaUrl,
-    ) -> anyhow::Result<()> {
+    pub async fn prepare_normal(&mut self, app: &AppHandle, media_url: &NormalMediaUrl) {
         let mut join_set = JoinSet::new();
 
         if let Some(medias) = &media_url.dash.audio {
@@ -54,7 +54,7 @@ impl AudioTask {
                 urls.extend_from_slice(&media.backup_url);
                 urls.push(media.base_url.clone());
 
-                join_set.spawn(async move {
+                let get_url_with_content_length_task = async move {
                     let bili_client = app.get_bili_client();
                     let url_with_content_length =
                         bili_client.get_url_with_content_length(urls).await;
@@ -62,7 +62,9 @@ impl AudioTask {
                         id,
                         url_with_content_length,
                     }
-                });
+                };
+
+                join_set.spawn(get_url_with_content_length_task.in_current_span());
             }
         }
 
@@ -75,7 +77,7 @@ impl AudioTask {
                 urls.extend_from_slice(&media.backup_url);
                 urls.push(media.base_url.clone());
 
-                join_set.spawn(async move {
+                let get_url_with_content_length_task = async move {
                     let bili_client = app.get_bili_client();
                     let url_with_content_length =
                         bili_client.get_url_with_content_length(urls).await;
@@ -83,7 +85,9 @@ impl AudioTask {
                         id,
                         url_with_content_length,
                     }
-                });
+                };
+
+                join_set.spawn(get_url_with_content_length_task.in_current_span());
             }
         }
 
@@ -96,50 +100,50 @@ impl AudioTask {
             urls.extend_from_slice(&media.backup_url);
             urls.push(media.base_url.clone());
 
-            join_set.spawn(async move {
+            let get_url_with_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let url_with_content_length = bili_client.get_url_with_content_length(urls).await;
                 MediaForPrepare {
                     id,
                     url_with_content_length,
                 }
-            });
+            };
+
+            join_set.spawn(get_url_with_content_length_task.in_current_span());
         }
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
 
-        while let Some(Ok(media)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(media) = join_result else {
+                continue;
+            };
+
             if !media.url_with_content_length.is_empty() {
                 medias.push(media);
             }
         }
 
-        self.prepare(app, medias)?;
-
-        Ok(())
+        self.prepare(app, &medias);
     }
 
-    pub async fn prepare_bangumi(
-        &mut self,
-        app: &AppHandle,
-        media_url: &BangumiMediaUrl,
-    ) -> anyhow::Result<()> {
+    pub async fn prepare_bangumi(&mut self, app: &AppHandle, media_url: &BangumiMediaUrl) {
         let Some(dash) = &media_url.dash else {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         };
 
         let Some(medias) = &dash.audio else {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         };
 
         if medias.is_empty() {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         }
 
         let mut join_set = JoinSet::new();
@@ -152,50 +156,50 @@ impl AudioTask {
             urls.extend_from_slice(&media.backup_url);
             urls.push(media.base_url.clone());
 
-            join_set.spawn(async move {
+            let get_url_with_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let url_with_content_length = bili_client.get_url_with_content_length(urls).await;
                 MediaForPrepare {
                     id,
                     url_with_content_length,
                 }
-            });
+            };
+
+            join_set.spawn(get_url_with_content_length_task.in_current_span());
         }
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
 
-        while let Some(Ok(media)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(media) = join_result else {
+                continue;
+            };
+
             if !media.url_with_content_length.is_empty() {
                 medias.push(media);
             }
         }
 
-        self.prepare(app, medias)?;
-
-        Ok(())
+        self.prepare(app, &medias);
     }
 
-    pub async fn prepare_cheese(
-        &mut self,
-        app: &AppHandle,
-        media_url: &CheeseMediaUrl,
-    ) -> anyhow::Result<()> {
+    pub async fn prepare_cheese(&mut self, app: &AppHandle, media_url: &CheeseMediaUrl) {
         let Some(dash) = &media_url.dash else {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         };
 
         let Some(medias) = &dash.audio else {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         };
 
         if medias.is_empty() {
             // 如果没有音频，则直接返回
             self.completed = true;
-            return Ok(());
+            return;
         }
 
         let mut join_set = JoinSet::new();
@@ -208,46 +212,52 @@ impl AudioTask {
             urls.extend_from_slice(&media.backup_url);
             urls.push(media.base_url.clone());
 
-            join_set.spawn(async move {
+            let get_url_with_content_length_task = async move {
                 let bili_client = app.get_bili_client();
                 let url_with_content_length = bili_client.get_url_with_content_length(urls).await;
                 MediaForPrepare {
                     id,
                     url_with_content_length,
                 }
-            });
+            };
+
+            join_set.spawn(get_url_with_content_length_task.in_current_span());
         }
 
         let mut medias: Vec<MediaForPrepare> = Vec::new();
 
-        while let Some(Ok(media)) = join_set.join_next().await {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(media) = join_result else {
+                continue;
+            };
+
             if !media.url_with_content_length.is_empty() {
                 medias.push(media);
             }
         }
 
-        self.prepare(app, medias)?;
-
-        Ok(())
+        self.prepare(app, &medias);
     }
 
-    fn prepare(&mut self, app: &AppHandle, mut medias: Vec<MediaForPrepare>) -> anyhow::Result<()> {
+    fn prepare(&mut self, app: &AppHandle, medias: &[MediaForPrepare]) {
         if medias.is_empty() {
-            return Err(anyhow!("获取音频地址失败"));
+            self.completed = true;
+            return;
         }
 
-        let quality_priority = app.get_config().read().audio_quality_priority.clone();
-        let priority_map: HashMap<&AudioQuality, usize> = quality_priority
-            .iter()
-            .enumerate()
-            .map(|(index, quality)| (quality, index))
-            .collect();
-        medias.sort_by_key(|media| {
-            let quality: AudioQuality = media.id.into();
-            priority_map.get(&quality).unwrap_or(&usize::MAX)
-        });
+        // 如果`audio_quality`为`Unknown`，则更倾向于使用优先级选择
+        let prefer_select_by_priority = self.audio_quality == AudioQuality::Unknown;
 
-        let media = &medias[0];
+        let selected_media = if prefer_select_by_priority {
+            select_media_by_priority(app, medias)
+        } else {
+            select_exact_match_media(self, medias).or_else(|| select_media_by_priority(app, medias))
+        };
+
+        let Some(media) = selected_media else {
+            self.completed = true;
+            return;
+        };
 
         self.audio_quality = media.id.into();
 
@@ -278,8 +288,6 @@ impl AudioTask {
             self.content_length = content_length;
             self.chunks = chunks;
         }
-
-        Ok(())
     }
 
     pub fn mark_uncompleted(&mut self) {
@@ -287,38 +295,51 @@ impl AudioTask {
         self.chunks.iter_mut().for_each(|chunk| {
             chunk.completed = false;
         });
+        self.skipped = false;
     }
 
     pub fn is_completed(&self) -> bool {
         !self.selected || self.completed
     }
 
+    #[allow(clippy::too_many_lines)]
+    #[instrument(level = "error", skip_all)]
     pub async fn process(
         &self,
         download_task: &Arc<DownloadTask>,
         progress: &DownloadProgress,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let (episode_dir, filename) = (&progress.episode_dir, &progress.filename);
+        let audio_task = progress.audio_task.clone();
+
+        let m4a_path = episode_dir.join(format!("{filename}.m4a"));
+        let file_exist_action = download_task.app.get_config().read().file_exist_action;
+        if file_exist_action == FileExistAction::Skip && m4a_path.exists() {
+            tracing::debug!("音频文件已存在，跳过下载");
+            download_task.update_progress(|p| {
+                p.audio_task.skipped = true;
+                p.audio_task.completed = true;
+            });
+            return Ok(());
+        }
 
         let temp_file_path = episode_dir.join(format!(
             "{filename}.m4a.com.lanyeeee.bilibili-video-downloader"
         ));
-        let (audio_task, episode_title, ids_string) = {
-            (
-                progress.audio_task.clone(),
-                progress.episode_title.clone(),
-                progress.get_ids_string(),
-            )
-        };
 
-        let file = if temp_file_path.exists() {
-            // 如果文件已存在，则打开它
+        let should_reuse_temp_file = temp_file_path
+            .metadata()
+            .map(|m| m.len() == audio_task.content_length)
+            .unwrap_or(false);
+
+        let file = if should_reuse_temp_file {
+            // 如果临时文件可以重用，则直接打开它
             OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(&temp_file_path)?
         } else {
-            // 如果文件不存在，创建它并预分配空间
+            // 如果临时文件不能重用，则创建个新的
             let file = File::create(&temp_file_path)?;
             file.allocate(audio_task.content_length)?;
             file
@@ -339,25 +360,31 @@ impl AudioTask {
                 download_task: download_task.clone(),
                 start,
                 end,
-                url: audio_task.url.to_string(),
+                url: audio_task.url.clone(),
                 file: file.clone(),
                 chunk_index,
             };
 
-            join_set.spawn(async move {
-                download_chunk_task.process().await.context(format!(
-                    "分片`{chunk_index}/{chunk_count}`下载失败({start}-{end})"
+            let chunk_order = chunk_index + 1;
+            let chunk_task = async move {
+                download_chunk_task.process().await.wrap_err(format!(
+                    "分片`{chunk_order}/{chunk_count}`下载失败({start}-{end})"
                 ))
-            });
+            };
+            join_set.spawn(chunk_task.in_current_span());
         }
 
-        while let Some(Ok(download_video_result)) = join_set.join_next().await {
-            match download_video_result {
+        while let Some(join_result) = join_set.join_next().await {
+            let Ok(download_audio_result) = join_result else {
+                continue;
+            };
+
+            match download_audio_result {
                 Ok(i) => download_task.update_progress(|p| p.audio_task.chunks[i].completed = true),
                 Err(err) => {
-                    let err_title = format!("{ids_string} `{episode_title}`音频的一个分片下载失败");
-                    let string_chain = err.to_string_chain();
-                    tracing::error!(err_title, message = string_chain);
+                    let err_title = "音频的一个分片下载失败";
+                    let message = err.to_message();
+                    tracing::error!(err_title, message);
                 }
             }
         }
@@ -370,32 +397,31 @@ impl AudioTask {
             .iter()
             .all(|chunk| chunk.completed);
         if !download_completed {
-            return Err(anyhow!(
+            return Err(eyre!(
                 "音频文件`{}`有分片未下载完成，[继续]可以跳过已下载分片断点续传",
                 temp_file_path.display()
             ));
         }
 
-        let is_audio_file_complete = utils::is_mp4_complete(&temp_file_path).context(format!(
+        let is_audio_file_complete = utils::is_mp4_complete(&temp_file_path).wrap_err(format!(
             "检查音频文件`{}`是否完整失败",
             temp_file_path.display()
         ))?;
 
         if !is_audio_file_complete {
-            download_task.update_progress(|p| p.video_task.mark_uncompleted());
-            return Err(anyhow!(
+            download_task.update_progress(|p| p.audio_task.mark_uncompleted());
+            return Err(eyre!(
                 "音频文件`{}`不完整，[继续]会重新下载所有分片",
                 temp_file_path.display()
             ));
         }
 
         // 重命名临时文件
-        let m4a_path = episode_dir.join(format!("{filename}.m4a"));
         if m4a_path.exists() {
             std::fs::remove_file(&m4a_path)
-                .context(format!("删除已存在的音频文件`{}`失败", m4a_path.display()))?;
+                .wrap_err(format!("删除已存在的音频文件`{}`失败", m4a_path.display()))?;
         }
-        std::fs::rename(&temp_file_path, &m4a_path).context(format!(
+        std::fs::rename(&temp_file_path, &m4a_path).wrap_err(format!(
             "将临时文件`{}`重命名为`{}`失败",
             temp_file_path.display(),
             m4a_path.display()
@@ -411,4 +437,36 @@ impl AudioTask {
 struct MediaForPrepare {
     pub id: i64,
     pub url_with_content_length: Vec<(String, u64)>,
+}
+
+fn select_exact_match_media(
+    audio_task: &AudioTask,
+    medias: &[MediaForPrepare],
+) -> Option<MediaForPrepare> {
+    let media = medias.iter().find(|m| {
+        let quality: AudioQuality = m.id.into();
+        quality == audio_task.audio_quality
+    });
+
+    media.cloned()
+}
+
+fn select_media_by_priority(
+    app: &AppHandle,
+    medias: &[MediaForPrepare],
+) -> Option<MediaForPrepare> {
+    let quality_priority = app.get_config().read().audio_quality_priority.clone();
+
+    let priority_map: HashMap<&AudioQuality, usize> = quality_priority
+        .iter()
+        .enumerate()
+        .map(|(index, quality)| (quality, index))
+        .collect();
+
+    let media = medias.iter().min_by_key(|media| {
+        let quality: AudioQuality = media.id.into();
+        priority_map.get(&quality).unwrap_or(&usize::MAX)
+    });
+
+    media.cloned()
 }

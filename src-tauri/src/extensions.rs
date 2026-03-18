@@ -1,50 +1,45 @@
-use anyhow::Context;
+use eyre::WrapErr;
 use parking_lot::RwLock;
 use tauri::{AppHandle, Manager, State};
+use tracing::instrument;
 
 use crate::{
     bili_client::BiliClient,
     config::Config,
     downloader::{download_manager::DownloadManager, download_progress::DownloadProgress},
+    plugin::plugin_manager::PluginManager,
     types::player_info::PlayerInfo,
 };
 
-pub trait AnyhowErrorToStringChain {
-    /// 将 `anyhow::Error` 转换为chain格式  
-    /// # Example  
-    /// 0: error message\
-    /// 1: error message\
-    /// 2: error message
-    fn to_string_chain(&self) -> String;
+pub trait EyreReportToMessage {
+    fn to_message(&self) -> String;
 }
 
-impl AnyhowErrorToStringChain for anyhow::Error {
-    fn to_string_chain(&self) -> String {
-        use std::fmt::Write;
-        self.chain()
-            .enumerate()
-            .fold(String::new(), |mut output, (i, e)| {
-                let _ = writeln!(output, "{i}: {e}");
-                output
-            })
+impl EyreReportToMessage for eyre::Report {
+    fn to_message(&self) -> String {
+        format!("{self:?}")
     }
 }
 
 pub trait AppHandleExt {
-    fn get_config(&self) -> State<RwLock<Config>>;
-    fn get_bili_client(&self) -> State<BiliClient>;
-    fn get_download_manager(&self) -> State<DownloadManager>;
+    fn get_config(&self) -> State<'_, RwLock<Config>>;
+    fn get_bili_client(&self) -> State<'_, BiliClient>;
+    fn get_download_manager(&self) -> State<'_, DownloadManager>;
+    fn get_plugin_manager(&self) -> State<'_, PluginManager>;
 }
 
-impl AppHandleExt for tauri::AppHandle {
-    fn get_config(&self) -> State<RwLock<Config>> {
+impl AppHandleExt for AppHandle {
+    fn get_config(&self) -> State<'_, RwLock<Config>> {
         self.state::<RwLock<Config>>()
     }
-    fn get_bili_client(&self) -> State<BiliClient> {
+    fn get_bili_client(&self) -> State<'_, BiliClient> {
         self.state::<BiliClient>()
     }
-    fn get_download_manager(&self) -> State<DownloadManager> {
+    fn get_download_manager(&self) -> State<'_, DownloadManager> {
         self.state::<DownloadManager>()
+    }
+    fn get_plugin_manager(&self) -> State<'_, PluginManager> {
+        self.state::<PluginManager>()
     }
 }
 
@@ -53,15 +48,16 @@ pub trait GetOrInitPlayerInfo {
         &'a mut self,
         app: &AppHandle,
         progress: &DownloadProgress,
-    ) -> anyhow::Result<&'a mut PlayerInfo>;
+    ) -> eyre::Result<&'a mut PlayerInfo>;
 }
 
 impl GetOrInitPlayerInfo for Option<PlayerInfo> {
+    #[instrument(level = "error", skip_all)]
     async fn get_or_init<'a>(
         &'a mut self,
         app: &AppHandle,
         progress: &DownloadProgress,
-    ) -> anyhow::Result<&'a mut PlayerInfo> {
+    ) -> eyre::Result<&'a mut PlayerInfo> {
         if let Some(info) = self {
             return Ok(info);
         }
@@ -70,7 +66,7 @@ impl GetOrInitPlayerInfo for Option<PlayerInfo> {
         let info = bili_client
             .get_player_info(progress.aid, progress.cid)
             .await
-            .context("获取播放器信息失败")?;
+            .wrap_err("获取播放器信息失败")?;
 
         Ok(self.insert(info))
     }

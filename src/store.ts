@@ -38,8 +38,16 @@ function useProgresses() {
   // 将 `_progresses` 的内容更新到 `progresses` 中，并触发重新渲染
   const updateProgressesOnFrame = () => {
     const newProgressesMap = new Map<string, ProgressData>()
+
     for (const [key, value] of _progresses.entries()) {
-      newProgressesMap.set(key, { ...value })
+      const progressData = progresses.value.get(key)
+
+      if (progressData !== undefined) {
+        Object.assign(progressData, value)
+        newProgressesMap.set(key, progressData)
+      } else {
+        newProgressesMap.set(key, { ...value })
+      }
     }
     progresses.value = newProgressesMap
 

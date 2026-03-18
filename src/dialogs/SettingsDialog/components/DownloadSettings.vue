@@ -1,44 +1,15 @@
 <script setup lang="ts">
-import { AudioQuality, VideoQuality, CodecType } from '../../../bindings.ts'
 import { useStore } from '../../../store.ts'
 import { VueDraggable } from 'vue-draggable-plus'
 import ColorfulTag from '../../../components/ColorfulTag.vue'
+import { getVideoQualityName, getAudioQualityName, getCodecTypeName } from '../../../utils.tsx'
+import { NTooltip, NCheckbox, NRadioGroup, NRadioButton } from 'naive-ui'
 
 const store = useStore()
-
-const videoQualityNameMap: Map<VideoQuality, string> = new Map([
-  ['240P', '240P 极速'],
-  ['360P', '360P 流畅'],
-  ['480P', '480P 标清'],
-  ['720P', '720P 准高清'],
-  ['720P60', '720P 60帧'],
-  ['1080P', '1080P 高清'],
-  ['AiRepair', 'AI智能修复'],
-  ['1080P+', '1080P 高码率'],
-  ['1080P60', '1080P 60帧'],
-  ['4K', '4K 超高清'],
-  ['HDR', 'HDR 真彩色'],
-  ['Dolby', '杜比视界'],
-  ['8K', '8K 超高清'],
-])
-
-const audioQualityNameMap: Map<AudioQuality, string> = new Map([
-  ['64K', '64K'],
-  ['132K', '132K'],
-  ['192K', '192K'],
-  ['Dolby', '杜比全景声'],
-  ['HiRes', 'Hi-Res 无损'],
-])
-
-const codecTypeNameMap: Map<CodecType, string> = new Map([
-  ['AVC', 'AVC (H.264)'],
-  ['HEVC', 'HEVC (H.265)'],
-  ['AV1', 'AV1'],
-])
 </script>
 
 <template>
-  <div v-if="store.config !== undefined" class="flex flex-col gap-row-2">
+  <div v-if="store.config !== undefined" class="flex flex-col gap-row-1">
     <div class="flex gap-2">
       <span class="w-15 font-bold">主要内容</span>
       <n-checkbox class="w-22" v-model:checked="store.config.download_video">下载视频</n-checkbox>
@@ -83,7 +54,7 @@ const codecTypeNameMap: Map<CodecType, string> = new Map([
     </div>
 
     <div class="flex gap-2">
-      <span class="w-14 w-15 font-bold">元数据</span>
+      <span class="w-15 font-bold">元数据</span>
       <n-tooltip placement="top" trigger="hover">
         <div>还会顺便下载poster和fanart(如果有的话)</div>
         <template #trigger>
@@ -109,7 +80,7 @@ const codecTypeNameMap: Map<CodecType, string> = new Map([
               color="blue"
               v-for="videoQuality in store.config.video_quality_priority"
               :key="videoQuality">
-              {{ videoQualityNameMap.get(videoQuality) || videoQuality }}
+              {{ getVideoQualityName(videoQuality) }}
             </ColorfulTag>
           </VueDraggable>
         </div>
@@ -129,7 +100,7 @@ const codecTypeNameMap: Map<CodecType, string> = new Map([
             color="blue"
             v-for="audioQuality in store.config.audio_quality_priority"
             :key="audioQuality">
-            {{ audioQualityNameMap.get(audioQuality) || audioQuality }}
+            {{ getAudioQualityName(audioQuality) }}
           </ColorfulTag>
         </VueDraggable>
       </div>
@@ -148,10 +119,25 @@ const codecTypeNameMap: Map<CodecType, string> = new Map([
             color="blue"
             v-for="codecType in store.config.codec_type_priority"
             :key="codecType">
-            {{ codecTypeNameMap.get(codecType) || codecType }}
+            {{ getCodecTypeName(codecType, { AVC: 'AVC (H.264)', HEVC: 'HEVC (H.265)' }) }}
           </ColorfulTag>
         </VueDraggable>
       </div>
+    </div>
+
+    <div class="flex flex-col">
+      <span class="font-bold">文件已存在时</span>
+      <n-radio-group v-model:value="store.config.file_exist_action" size="small">
+        <n-radio-button value="Overwrite">覆盖旧文件</n-radio-button>
+        <n-radio-button value="Skip">跳过下载</n-radio-button>
+      </n-radio-group>
+    </div>
+
+    <div class="flex flex-col">
+      <span class="font-bold">其他</span>
+      <n-checkbox class="w-fit" v-model:checked="store.config.auto_start_download_task">
+        创建下载任务后自动开始
+      </n-checkbox>
     </div>
   </div>
 </template>

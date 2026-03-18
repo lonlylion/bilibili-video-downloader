@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useStore } from '../../../store.ts'
+import { NTooltip, NInputGroupLabel, NCheckbox, NInputNumber, NInput, NInputGroup } from 'naive-ui'
 
 const store = useStore()
 </script>

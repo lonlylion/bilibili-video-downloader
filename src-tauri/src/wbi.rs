@@ -1,8 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{anyhow, Context};
+use eyre::{OptionExt, WrapErr, eyre};
 use md5::{Digest, Md5};
 use serde::Deserialize;
+use tracing::instrument;
 
 use crate::bili_client::{BiliClient, BiliResp};
 
@@ -25,8 +26,9 @@ struct WeiRespData {
 
 impl BiliClient {
     // 为请求参数进行 wbi 签名
-    pub(crate) async fn wbi(&self, params: &mut Vec<(&str, String)>) -> anyhow::Result<()> {
-        let (img_key, sub_key) = self.get_wbi_keys().await.context("获取wbi keys失败")?;
+    #[instrument(level = "error", skip_all)]
+    pub async fn wbi(&self, params: &mut Vec<(&str, String)>) -> eyre::Result<()> {
+        let (img_key, sub_key) = self.get_wbi_keys().await.wrap_err("获取wbi keys失败")?;
         let mixin_key = get_mixin_key((img_key + &sub_key).as_bytes());
 
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -46,7 +48,8 @@ impl BiliClient {
         Ok(())
     }
 
-    async fn get_wbi_keys(&self) -> anyhow::Result<(String, String)> {
+    #[instrument(level = "error", skip_all)]
+    async fn get_wbi_keys(&self) -> eyre::Result<(String, String)> {
         let request = self
             .api_client
             .read()
@@ -58,27 +61,27 @@ impl BiliClient {
         let status = http_resp.status();
         let body = http_resp.text().await?;
         if status != reqwest::StatusCode::OK {
-            return Err(anyhow!("预料之外的状态码({status}): {body}"));
+            return Err(eyre!("预料之外的状态码({status}): {body}"));
         }
         // 尝试将body解析为BiliResp
         let bili_resp: BiliResp =
-            serde_json::from_str(&body).context(format!("将body解析为BiliResp失败: {body}"))?;
+            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
         // 检查BiliResp的data是否存在
         let Some(data) = bili_resp.data else {
-            return Err(anyhow!("BiliResp中不存在data字段: {bili_resp:?}"));
+            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
         };
         // 尝试将data解析为Data
         let data_str = data.to_string();
-        let wei_resp_data: WeiRespData =
-            serde_json::from_str(&data_str).context(format!("将data解析为Data失败: {data_str}"))?;
+        let wei_resp_data: WeiRespData = serde_json::from_str(&data_str)
+            .wrap_err(format!("将data解析为Data失败: {data_str}"))?;
 
         let img_url = wei_resp_data.wbi_img.img_url;
         let sub_url = wei_resp_data.wbi_img.sub_url;
 
         let img_filename =
-            take_filename(&img_url).context(format!("从img_url中提取文件名失败: {img_url}"))?;
+            take_filename(&img_url).ok_or_eyre(format!("从img_url中提取文件名失败: {img_url}"))?;
         let sub_filename =
-            take_filename(&sub_url).context(format!("从sub_url中提取文件名失败: {sub_url}"))?;
+            take_filename(&sub_url).ok_or_eyre(format!("从sub_url中提取文件名失败: {sub_url}"))?;
 
         Ok((img_filename, sub_filename))
     }
