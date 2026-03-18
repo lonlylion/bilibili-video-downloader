@@ -1,5 +1,5 @@
 <!--
-PR请提交至 develop 分支
+PR请基于 develop 分支开发，并提交至 develop 分支
 
 提交前请先：
 
